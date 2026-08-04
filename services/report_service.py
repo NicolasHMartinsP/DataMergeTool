@@ -20,3 +20,12 @@ class ReportService:
                 
             print(f"\nSugestão:\n{grupo.mestre.id}\n")
             console.separador()
+            
+    def mostrar_validacao(self, falhas: List[str], arquivo_saida: str):
+        console.separador()
+        if falhas:
+            console.erro(f"Validação falhou! {len(falhas)} IDs antigos ainda constam nas planilhas:")
+            print(falhas)
+        else:
+            console.sucesso("Validação concluída: 100% dos IDs foram substituídos.")
+            console.sucesso(f"Planilha salva com sucesso em: {arquivo_saida}")
