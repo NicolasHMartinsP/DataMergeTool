@@ -12,15 +12,16 @@ class ReportService:
             return
 
         for grupo in grupos:
-            print(f"Fornecedor: {grupo.nome}\n")
+            print(f"Fornecedor: {grupo.nome}")
+            print(f"Agrupado por: [{grupo.motivo}]\n")
             print(f"{'ID':<14} {'Qtd':<6} {'Rastreio por Loja'}\n")
             
             for f in grupo.duplicados:
-                # Monta a string no formato: (loja1.xlsx: 10 | loja2.xlsx: 5)
                 detalhe_lojas = " | ".join([f"{loja}: {qtd}" for loja, qtd in f.movimentacoes_por_loja.items()])
                 detalhe_str = f"({detalhe_lojas})" if detalhe_lojas else ""
                 
-                print(f"{f.id:<14} {f.movimentacoes:<6} {detalhe_str}")
+                # Exibe o nome real do cara pra você saber quem ele juntou
+                print(f"{f.id:<14} {f.movimentacoes:<6} {f.nome} {detalhe_str}")
                 
             print(f"\nSugestão Global:\n{grupo.mestre.id}\n")
             console.separador()
