@@ -114,12 +114,17 @@ def main():
                     for f in alvos:
                         itens_pendentes.remove(f)
                         if f.id in marcados: marcados.remove(f.id)
-                        
+
                 elif acao == 'S':
                     # Migrar para Sugestão Global
                     for f in alvos:
                         if f.id != grupo.mestre.id:
                             migration_service.criar_migracao_individual(f, grupo.mestre.id)
+                            # ========================================================
+                            # CORREÇÃO: Adiciona as notas ao mestre em tempo real
+                            # ========================================================
+                            grupo.mestre.movimentacoes += f.movimentacoes
+                            
                         itens_pendentes.remove(f)
                         if f.id in marcados: marcados.remove(f.id)
                         
@@ -148,8 +153,15 @@ def main():
                             for f in alvos:
                                 if f.id != dest_id:
                                     migration_service.criar_migracao_individual(f, dest_id)
+                                    # ========================================================
+                                    # CORREÇÃO: Adiciona as notas ao destino em tempo real
+                                    # ========================================================
+                                    if dest_fornecedor:
+                                        dest_fornecedor.movimentacoes += f.movimentacoes
+                                        
                                 itens_pendentes.remove(f)
                                 if f.id in marcados: marcados.remove(f.id)
+        
 
         # ---------------- SPRINT 3 e 4 (BATCH PROCESS E EXPORTAÇÃO) ----------------
         todas_migracoes = migration_service.obter_migracoes()
