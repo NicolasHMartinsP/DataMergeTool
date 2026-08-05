@@ -18,7 +18,7 @@ def main():
         contagem = excel_service.contar_movimentacoes()
         grupos_duplicados = duplicate_service.encontrar_duplicados(fornecedores, contagem)
         
-        # ---------------- SPRINT 2 (CHECKLIST INTERATIVO) ----------------
+        # ---------------- SPRINT 2 (MENU UNIFICADO) ----------------
         if not grupos_duplicados:
             print("Nenhum fornecedor duplicado encontrado.")
             return
@@ -29,106 +29,92 @@ def main():
             while len(itens_pendentes) > 0:
                 console.limpar_tela()
                 console.titulo(f"GRUPO: {grupo.nome}")
-                print(f"Motivo do Agrupamento: [{grupo.motivo}]")
-                print(f"Sugestão Global do Sistema: {grupo.mestre.id} ({grupo.mestre.nome})\n")
+                print(f"Motivo: [{grupo.motivo}]")
+                print(f"Sugestão Global: {grupo.mestre.id} ({grupo.mestre.nome})\n")
                 
-                # Monta as opções do CHECKLIST
-                choices = []
+                # Monta as opções do Menu Unificado
+                choices = [
+                    questionary.Choice(title="[S] Migrar TODOS abaixo para a Sugestão Global", value="ALL_S"),
+                    questionary.Choice(title="[I] Informar um ID manualmente para TODOS abaixo", value="ALL_I"),
+                    questionary.Choice(title="[P] Pular o restante do grupo", value="SKIP"),
+                    questionary.Separator(line="-" * 60)
+                ]
+                
                 for f in itens_pendentes:
                     detalhe_lojas = " | ".join([f"{loja}: {qtd}" for loja, qtd in f.movimentacoes_por_loja.items()])
                     choices.append(questionary.Choice(
-                        title=f"{f.id:<10} | {f.movimentacoes:<4} notas | {f.nome} ({detalhe_lojas})",
+                        title=f"➜ {f.id:<8} | {f.movimentacoes:<4} notas | {f.nome} ({detalhe_lojas})",
                         value=f
                     ))
 
-                # CHECKLIST: Retorna uma lista de itens selecionados
-                selecionados = questionary.checkbox(
-                    "Use ESPAÇO para marcar os IDs, e ENTER para confirmar (Deixe vazio para pular o grupo):",
+                # MENU PRINCIPAL
+                resposta = questionary.select(
+                    "Escolha uma ação global, ou selecione um fornecedor específico abaixo:",
                     choices=choices,
-                    style=questionary.Style([
-                        ('selected', 'fg:green bold'),
-                        ('pointer', 'fg:green bold'),
-                        ('highlighted', 'fg:green bold'),
-                    ])
+                    style=questionary.Style([('selected', 'fg:green bold')])
                 ).ask()
 
-                # Se o usuário não selecionou nada (apertou ENTER direto) ou deu Ctrl+C
-                if not selecionados:
+                if resposta == "SKIP" or resposta is None:
                     break
                 
-                # MENU DE AÇÃO PARA O LOTE SELECIONADO
-                print(f"\n>> Você selecionou {len(selecionados)} fornecedor(es).")
-                acao = questionary.select(
-                    "O que fazer com os itens selecionados?",
-                    choices=[
-                        questionary.Choice(title=f"[S] Migrar todos para a Sugestão Global ({grupo.mestre.id})", value="S"),
-                        questionary.Choice(title="[I] Informar manualmente um ID diferente para este lote", value="I"),
-                        questionary.Choice(title="[C] Cancelar seleção e voltar", value="C"),
-                    ],
-                    style=questionary.Style([('selected', 'fg:cyan bold')])
-                ).ask()
-
-                if acao == "C" or acao is None:
-                    continue
-
-                dest_id = None
-                nome_dest = ""
-                qtd_dest = 0
-
-                if acao == "S":
-                    dest_id = grupo.mestre.id
-                    nome_dest = grupo.mestre.nome
-                    qtd_dest = grupo.mestre.movimentacoes
-                elif acao == "I":
-                    dest_id = input("Digite o ID de destino para este lote (ou ENTER para cancelar): ").strip()
-                    if not dest_id:
-                        continue
+                elif resposta == "ALL_S":
+                    for f in itens_pendentes:
+                        if f.id != grupo.mestre.id:
+                            migration_service.criar_migracao_individual(f, grupo.mestre.id)
+                    break # Avança para o próximo grupo
                     
-                    # Busca as informações para a tela de confirmação
-                    dest_fornecedor = duplicate_service.buscar_por_id(dest_id, fornecedores)
-                    if dest_fornecedor:
-                        nome_dest = dest_fornecedor.nome
-                        qtd_dest = dest_fornecedor.movimentacoes
+                elif resposta == "ALL_I":
+                    dest_id = input("Digite o ID de destino para TODOS: ").strip()
+                    if dest_id:
+                        for f in itens_pendentes:
+                            if f.id != dest_id:
+                                migration_service.criar_migracao_individual(f, dest_id)
+                        break # Avança para o próximo grupo
                     else:
-                        nome_dest = "FORNECEDOR NÃO CADASTRADO NA BASE"
-                        qtd_dest = 0
+                        continue # Volta se deixar vazio
 
-                # TELA DE CONFIRMAÇÃO EM LOTE
-                total_notas_lote = sum(f.movimentacoes for f in selecionados)
-                print(f"\n================ CONFIRMAÇÃO DE LOTE ================")
-                print(f"MIGRANDO   : {len(selecionados)} fornecedores (Total de {total_notas_lote} notas)")
-                print(f"PARA O ID  : {dest_id} - {nome_dest} (Possui {qtd_dest} notas atualmente)")
-                print(f"=====================================================")
-                
-                confirm = input("Confirmar esta migração em lote? (S/N): ").strip().upper()
-                
-                if confirm == 'S':
-                    for f in selecionados:
-                        if f.id != dest_id:
-                            migration_service.criar_migracao_individual(f, dest_id)
-                        # Remove da lista de pendentes para atualizar o checklist na próxima iteração
-                        if f in itens_pendentes:
-                            itens_pendentes.remove(f)
-                            
-                    console.sucesso("Migração em lote registrada com sucesso!")
                 else:
-                    print("Ação cancelada. Voltando para o checklist...")
+                    # USUÁRIO SELECIONOU UM FORNECEDOR ESPECÍFICO
+                    item_selecionado = resposta
+                    
+                    print(f"\n>> Modificando: {item_selecionado.id} ({item_selecionado.nome})")
+                    acao_indiv = questionary.select(
+                        "O que fazer com ESTE fornecedor?",
+                        choices=[
+                            questionary.Choice(title=f"[S] Migrar para a Sugestão Global ({grupo.mestre.id})", value="S"),
+                            questionary.Choice(title="[I] Informar outro ID manualmente", value="I"),
+                            questionary.Choice(title="[V] Voltar (Cancelar)", value="V")
+                        ],
+                        style=questionary.Style([('selected', 'fg:cyan bold')])
+                    ).ask()
 
-                input("\nPressione ENTER para continuar...")
+                    if acao_indiv == "S":
+                        if item_selecionado.id != grupo.mestre.id:
+                            migration_service.criar_migracao_individual(item_selecionado, grupo.mestre.id)
+                        itens_pendentes.remove(item_selecionado) # Tira da lista pra limpar a tela
+                        
+                    elif acao_indiv == "I":
+                        dest_id = input(f"Digite o ID de destino para {item_selecionado.nome}: ").strip()
+                        if dest_id and item_selecionado.id != dest_id:
+                            migration_service.criar_migracao_individual(item_selecionado, dest_id)
+                            itens_pendentes.remove(item_selecionado)
 
-        # ---------------- SPRINT 3 e 4 (BATCH PROCESS) ----------------
+        # ---------------- SPRINT 3 e 4 (BATCH PROCESS E EXPORTAÇÃO) ----------------
         todas_migracoes = migration_service.obter_migracoes()
         
         if todas_migracoes:
             console.limpar_tela()
-            console.titulo("EXECUTANDO MIGRAÇÕES")
+            console.titulo("EXECUTANDO MIGRAÇÕES E LIMPEZA")
             print(f"Substituindo {len(todas_migracoes)} IDs nas abas de movimentações...")
             
             excel_service.atualizar_ids(todas_migracoes)
             falhas = excel_service.validar_migracoes(todas_migracoes)
             arquivos_salvos = excel_service.salvar_planilhas()
             
-            report_service.mostrar_validacao(falhas, arquivos_salvos, "N/A (Somente Movimentações foram alteradas nesta versão)")
+            ids_mortos = [m.origem for m in todas_migracoes]
+            arquivo_fornecedores_limpo = excel_service.salvar_base_fornecedores_limpa(ids_mortos)
+            
+            report_service.mostrar_validacao(falhas, arquivos_salvos, arquivo_fornecedores_limpo)
             
         else:
             console.limpar_tela()
