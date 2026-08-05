@@ -82,3 +82,21 @@ class DuplicateService:
             if f.id == id_busca:
                 return f
         return None
+
+    # ==========================================
+    # NOVO MÉTODO PARA PESQUISA DINÂMICA
+    # ==========================================
+    def buscar_por_nome_parcial(self, termo: str, fornecedores: List[FornecedorEntity]) -> List[FornecedorEntity]:
+        termo_limpo = self._sanitizar_nome(termo)
+        termo_upper = termo.upper()
+        resultados = []
+        
+        for f in fornecedores:
+            # Procura usando o nome limpo (ignora acentos) ou o nome original
+            nome_comp = getattr(f, 'nome_comparacao', self._sanitizar_nome(f.nome))
+            
+            if termo_limpo in nome_comp or termo_upper in f.nome.upper():
+                resultados.append(f)
+        
+        # Retorna ordenado para os mais relevantes (com mais notas) aparecerem no topo
+        return sorted(resultados, key=lambda x: x.movimentacoes, reverse=True)
