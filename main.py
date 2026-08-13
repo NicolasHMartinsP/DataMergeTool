@@ -85,10 +85,10 @@ def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_gr
         print(" [I] Informar ID / Pesquisar Manualmente")
         print(" [P] Pular / Ignorar")
         
-        # Opções sempre visíveis, apenas com aviso de status
-        status_desfazer = "" if pode_desfazer else " (Indisponível - Histórico Vazio)"
-        print(f" [Z] Desfazer última ação{status_desfazer}")
-        print(f" [V] Voltar para um Grupo Específico (Rollback){status_desfazer}")
+        # NOVA LÓGICA VISUAL: Sempre mostra os botões, só avisa se estiver vazio
+        aviso_historico = "" if pode_desfazer else " (Indisponível - Histórico Vazio)"
+        print(f" [Z] Desfazer última ação{aviso_historico}")
+        print(f" [V] Voltar para um Grupo Específico (Rollback){aviso_historico}")
         
         print(" [Q] Pausar Sessão")
         print("=" * 75)

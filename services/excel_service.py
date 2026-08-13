@@ -118,15 +118,18 @@ class ExcelService:
         if not ids_mortos:
             return None
             
-        # Pega a aba correta (Ajuste o nome 'Base Fornecedores' se no seu dicionário a chave for diferente)
-        df_base = self.planilhas['Base Fornecedores'] 
+        # CORREÇÃO: Usa a variável correta que armazenou o Excel original
+        df_base = self.df_fornecedores.copy() 
+        
+        # CORREÇÃO: Puxa o nome da coluna de ID direto do seu config
+        col = config.COLUNA_ID
         
         # Transforma tudo em String e corta espaços em branco das pontas
-        df_base['ID'] = df_base['ID'].astype(str).str.strip()
+        df_base[col] = df_base[col].astype(str).str.strip()
         ids_mortos_limpos = [str(i).strip() for i in ids_mortos]
         
         # Filtra mantendo apenas as linhas onde o ID NÃO ESTÁ (~) na lista de mortos
-        df_limpo = df_base[~df_base['ID'].isin(ids_mortos_limpos)]
+        df_limpo = df_base[~df_base[col].isin(ids_mortos_limpos)]
         
         nome_arquivo = "ATUALIZADO_The Best Almeida.xlsx"
         df_limpo.to_excel(nome_arquivo, index=False)
