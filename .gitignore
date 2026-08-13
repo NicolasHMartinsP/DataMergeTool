@@ -1,2 +1,27 @@
-Movimentações.xlsx
-The Best Almeida.xlsx
+# Ambientes Virtuais
+.venv/
+venv/
+env/
+
+# Cache e Binários do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Arquivos de Estado e Log
+backup_sessao.json
+RELATORIO_EXCLUSAO.txt
+
+# Pastas de Dados (Entrada e Saída)
+movimentacoes/
+saida/
+
+# Planilhas Base e Documentos
+ATUALIZADO_*.xlsx
+MERGED_*.xlsx
+The Best Almeida*.xlsx
+*.pdf
+
+# (Opcional) Ignorar configurações com dados sensíveis
+# config.py
