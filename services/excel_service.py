@@ -114,17 +114,20 @@ class ExcelService:
             arquivos_salvos.append(caminho_saida)
         return arquivos_salvos
 
-    def salvar_base_fornecedores_limpa(self, ids_removidos: List[str]) -> str:
-        """ Remove as linhas dos fornecedores que foram migrados e salva a base limpa """
-        ids_removidos_set = set(ids_removidos)
+    def salvar_base_fornecedores_limpa(self, ids_mortos: list):
+        if not ids_mortos:
+            return None
+            
+        # Pega a aba correta (Ajuste o nome 'Base Fornecedores' se no seu dicionário a chave for diferente)
+        df_base = self.planilhas['Base Fornecedores'] 
         
-        # Mantém apenas a linha cujo ID limpo NÃO esteja na lista de removidos
-        mascara = self.df_fornecedores[config.COLUNA_ID].apply(
-            lambda x: pd.notna(x) and self._limpar_id(x) not in ids_removidos_set
-        )
+        # Transforma tudo em String e corta espaços em branco das pontas
+        df_base['ID'] = df_base['ID'].astype(str).str.strip()
+        ids_mortos_limpos = [str(i).strip() for i in ids_mortos]
         
-        df_limpo = self.df_fornecedores[mascara]
+        # Filtra mantendo apenas as linhas onde o ID NÃO ESTÁ (~) na lista de mortos
+        df_limpo = df_base[~df_base['ID'].isin(ids_mortos_limpos)]
         
-        caminho_saida = os.path.join(config.PASTA_SAIDA, f"ATUALIZADO_{config.ARQUIVO_FORNECEDORES}")
-        df_limpo.to_excel(caminho_saida, sheet_name=config.ABA_FORNECEDOR, index=False)
-        return caminho_saida
+        nome_arquivo = "ATUALIZADO_The Best Almeida.xlsx"
+        df_limpo.to_excel(nome_arquivo, index=False)
+        return nome_arquivo
