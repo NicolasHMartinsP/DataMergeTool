@@ -16,7 +16,7 @@ RELATORIO_EXCLUSAO.txt
 # Pastas de Dados (Entrada e Saída)
 movimentacoes/
 saida/
-
+contas/
 # Planilhas Base e Documentos
 ATUALIZADO_*.xlsx
 MERGED_*.xlsx
