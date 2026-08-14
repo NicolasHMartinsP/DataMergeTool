@@ -8,12 +8,14 @@ import warnings
 # ==========================================
 # IMPORTAÇÕES DA NOVA INTERFACE (RICH)
 # ==========================================
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.align import Align
 from rich.table import Table
 from rich import box
 from rich.markup import escape
+from rich.live import Live
+from rich.text import Text
 
 from services.excel_service import ExcelService
 from services.duplicate_service import DuplicateService
@@ -124,7 +126,7 @@ def atualizar_pendencias_grupos(grupos_duplicados, ids_processados):
         grupo.itens_pendentes = [f for f in grupo.duplicados if f.id not in ids_processados]
 
 # =========================================================================
-# MENUS VISUAIS RENOVADOS
+# MENUS VISUAIS "LIVE" (SEM FLICKERING / SEM PISCAR A TELA)
 # =========================================================================
 
 def exibir_confirmacao_migracao(alvos, dest_id, nome_dest, dest_forn=None):
@@ -165,15 +167,10 @@ def exibir_confirmacao_migracao(alvos, dest_id, nome_dest, dest_forn=None):
         if t == b'\x1b': return False
 
 def menu_pesquisa_nativo(resultados, termo_busca, sessao_atual, ids_processados):
-    """ Menu de pesquisa de ÚNICA escolha (Usado para Destinos de Migração) """
     cursor = 0
     opcoes = resultados + ["EXTERNO"]
 
-    while True:
-        ui.clear()
-        ui.print(Panel(f"[bold bright_cyan]PESQUISA:[/bold bright_cyan] [bright_white]'{escape(termo_busca)}'[/bright_white]", border_style="bright_cyan"))
-        ui.print(" [dim]NAVEGAÇÃO: Setas (Cima/Baixo) | SELEÇÃO: [ENTER] | CANCELAR: [ESC][/dim]\n")
-
+    def render_layout(pos):
         table = Table(show_header=True, header_style="bold bright_magenta", box=box.SIMPLE)
         table.add_column("Sel", justify="center")
         table.add_column("Status Atual")
@@ -182,7 +179,7 @@ def menu_pesquisa_nativo(resultados, termo_busca, sessao_atual, ids_processados)
         table.add_column("Notas")
 
         for i, item in enumerate(opcoes):
-            is_cursor = i == cursor
+            is_cursor = i == pos
             cursor_char = "[bold bright_cyan] ➜ [/bold bright_cyan]" if is_cursor else "   "
             row_style = "bold bright_white" if is_cursor else "white"
             
@@ -198,27 +195,30 @@ def menu_pesquisa_nativo(resultados, termo_busca, sessao_atual, ids_processados)
 
                 table.add_row(cursor_char, status_tag, f"[{row_style}]{item.id}[/]", f"[{row_style}]{escape(item.nome)}[/]", f"[{row_style}]{item.movimentacoes}[/]")
 
-        ui.print(table)
+        return Group(
+            Panel(f"[bold bright_cyan]PESQUISA:[/bold bright_cyan] [bright_white]'{escape(termo_busca)}'[/bright_white]", border_style="bright_cyan"),
+            Text(" NAVEGAÇÃO: Setas (Cima/Baixo) | SELEÇÃO: [ENTER] | CANCELAR: [ESC]\n", style="dim"),
+            table
+        )
 
-        tecla = msvcrt.getch()
-        if tecla in (b'\xe0', b'\x00'):
-            seta = msvcrt.getch()
-            if seta == b'H': cursor = max(0, cursor - 1)
-            elif seta == b'P': cursor = min(len(opcoes) - 1, cursor + 1)
-        elif tecla == b'\r': return opcoes[cursor]
-        elif tecla == b'\x1b': return None
-        elif tecla == b'\x03': raise KeyboardInterrupt
+    # Motor Live: Isola a interface e renderiza instantaneamente
+    with Live(render_layout(cursor), console=ui, screen=True, auto_refresh=False) as live:
+        while True:
+            tecla = msvcrt.getch()
+            if tecla in (b'\xe0', b'\x00'):
+                seta = msvcrt.getch()
+                if seta == b'H': cursor = max(0, cursor - 1)
+                elif seta == b'P': cursor = min(len(opcoes) - 1, cursor + 1)
+                live.update(render_layout(cursor), refresh=True)
+            elif tecla == b'\r': return opcoes[cursor]
+            elif tecla == b'\x1b': return None
+            elif tecla == b'\x03': raise KeyboardInterrupt
 
 def menu_pesquisa_multi(resultados, termo_busca, sessao_atual, ids_processados, pendentes_ids):
-    """ Menu de pesquisa de MÚLTIPLA escolha (Usado pelo atalho [T] para puxar fornecedores) """
     cursor = 0
     marcados = set()
 
-    while True:
-        ui.clear()
-        ui.print(Panel(f"[bold bright_cyan]PESQUISA MÚLTIPLA:[/bold bright_cyan] [bright_white]'{escape(termo_busca)}'[/bright_white]", border_style="bright_cyan"))
-        ui.print(" [dim]NAVEGAÇÃO: Setas (Cima/Baixo) | MARCAR: [ENTER] | CONFIRMAR SELEÇÃO: [C] | CANCELAR: [ESC][/dim]\n")
-
+    def render_layout(pos, marc):
         table = Table(show_header=True, header_style="bold bright_magenta", box=box.SIMPLE)
         table.add_column("Sel", justify="center")
         table.add_column("Status Atual")
@@ -227,8 +227,8 @@ def menu_pesquisa_multi(resultados, termo_busca, sessao_atual, ids_processados, 
         table.add_column("Notas")
 
         for i, item in enumerate(resultados):
-            is_cursor = i == cursor
-            is_selected = item.id in marcados
+            is_cursor = i == pos
+            is_selected = item.id in marc
             in_group = item.id in pendentes_ids
             
             cursor_char = "[bold bright_cyan] ➜ [/bold bright_cyan]" if is_cursor else "   "
@@ -237,12 +237,9 @@ def menu_pesquisa_multi(resultados, termo_busca, sessao_atual, ids_processados, 
                 row_style = "bright_green"
             
             sel_char = "[dim][   ][/]"
-            if in_group:
-                sel_char = "[dim bright_blue][ G ][/]"
-            elif is_selected:
-                sel_char = "[bold bright_green][ X ][/]"
+            if in_group: sel_char = "[dim bright_blue][ G ][/]"
+            elif is_selected: sel_char = "[bold bright_green][ X ][/]"
             
-            # Status Logic
             status_tag = f"[{row_style}][dim white]INTACTO[/dim white][/]"
             if item.id in sessao_atual: status_tag = f"[bold red]MIGRADO p/ {sessao_atual[item.id]}[/bold red]"
             elif item.id in ids_processados: status_tag = "[bold bright_yellow]PULADO[/bold bright_yellow]"
@@ -250,48 +247,42 @@ def menu_pesquisa_multi(resultados, termo_busca, sessao_atual, ids_processados, 
                 status_tag = f"[bold bright_green]RECEBEU NOTAS[/bold bright_green]"
             elif item.movimentacoes == 0: status_tag = "[dim red]VAZIO[/dim red]"
 
-            table.add_row(
-                f"{cursor_char}{sel_char}",
-                status_tag,
-                f"[{row_style}]{item.id}[/]",
-                f"[{row_style}]{escape(item.nome)}[/]",
-                f"[{row_style}]{item.movimentacoes}[/]"
-            )
+            table.add_row(f"{cursor_char}{sel_char}", status_tag, f"[{row_style}]{item.id}[/]", f"[{row_style}]{escape(item.nome)}[/]", f"[{row_style}]{item.movimentacoes}[/]")
 
-        ui.print(table)
-        
-        ui.print(f"\n [bold bright_green]Selecionados: {len(marcados)}[/bold bright_green] (Pressione [bold white]C[/bold white] para confirmar e puxar para o grupo)")
+        return Group(
+            Panel(f"[bold bright_cyan]PESQUISA MÚLTIPLA:[/bold bright_cyan] [bright_white]'{escape(termo_busca)}'[/bright_white]", border_style="bright_cyan"),
+            Text(" NAVEGAÇÃO: Setas (Cima/Baixo) | MARCAR: [ENTER] | CONFIRMAR SELEÇÃO: [C] | CANCELAR: [ESC]\n", style="dim"),
+            table,
+            Text(f"\n Selecionados: {len(marc)} (Pressione C para confirmar)", style="bold bright_green")
+        )
 
-        tecla = msvcrt.getch()
-        if tecla in (b'\xe0', b'\x00'):
-            seta = msvcrt.getch()
-            if seta == b'H': cursor = max(0, cursor - 1)
-            elif seta == b'P': cursor = min(len(resultados) - 1, cursor + 1)
-        elif tecla == b'\r': 
-            item_id = resultados[cursor].id
-            if item_id not in pendentes_ids:
-                if item_id in marcados: marcados.remove(item_id)
-                else: marcados.add(item_id)
-        elif tecla.upper() == b'C': 
-            return [r for r in resultados if r.id in marcados]
-        elif tecla == b'\x1b': 
-            return []
-        elif tecla == b'\x03': raise KeyboardInterrupt
+    with Live(render_layout(cursor, marcados), console=ui, screen=True, auto_refresh=False) as live:
+        while True:
+            tecla = msvcrt.getch()
+            if tecla in (b'\xe0', b'\x00'):
+                seta = msvcrt.getch()
+                if seta == b'H': cursor = max(0, cursor - 1)
+                elif seta == b'P': cursor = min(len(resultados) - 1, cursor + 1)
+                live.update(render_layout(cursor, marcados), refresh=True)
+            elif tecla == b'\r': 
+                item_id = resultados[cursor].id
+                if item_id not in pendentes_ids:
+                    if item_id in marcados: marcados.remove(item_id)
+                    else: marcados.add(item_id)
+                live.update(render_layout(cursor, marcados), refresh=True)
+            elif tecla.upper() == b'C': return [r for r in resultados if r.id in marcados]
+            elif tecla == b'\x1b': return []
+            elif tecla == b'\x03': raise KeyboardInterrupt
 
 def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_grupos, total_migracoes, pode_desfazer):
     cursor = 0
-    while True:
-        if cursor >= len(itens_pendentes):
-            cursor = max(0, len(itens_pendentes) - 1)
 
-        ui.clear()
+    def render_layout(pos, marc):
         progresso_txt = f"[bold bright_white]PROGRESSO:[/bold bright_white] Grupo {idx_grupo} de {total_grupos} | [bold bright_green]Migrações Salvas:[/bold bright_green] {total_migracoes}"
-        ui.print(Panel(Align.center(progresso_txt), border_style="dim white"))
+        panel_progresso = Panel(Align.center(progresso_txt), border_style="dim white")
         
         info_grupo = f"[bold bright_yellow]Motivo:[/bold bright_yellow] {escape(grupo.motivo)}\n[bold bright_green]Sugestão Global:[/bold bright_green] {grupo.mestre.id} ({escape(grupo.mestre.nome)})"
-        ui.print(Panel(info_grupo, title=f"[bold bright_cyan]GRUPO: {escape(grupo.nome)}[/bold bright_cyan]", border_style="bright_cyan"))
-        
-        ui.print(" [dim]NAVEGAÇÃO: Setas (Cima/Baixo) | SELEÇÃO (Marcar): [ENTER][/dim]\n")
+        panel_info = Panel(info_grupo, title=f"[bold bright_cyan]GRUPO: {escape(grupo.nome)}[/bold bright_cyan]", border_style="bright_cyan")
         
         table = Table(show_header=True, header_style="bold bright_magenta", box=box.SIMPLE)
         table.add_column("Sel", justify="center")
@@ -301,8 +292,8 @@ def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_gr
         table.add_column("Origem (Lojas)", style="dim white")
         
         for i, f in enumerate(itens_pendentes):
-            is_selected = f.id in marcados
-            is_cursor = i == cursor
+            is_selected = f.id in marc
+            is_cursor = i == pos
             
             sel_char = "[bold bright_green][ X ][/]" if is_selected else "[dim][   ][/]"
             cursor_char = "[bold bright_cyan]➜[/] " if is_cursor else "  "
@@ -322,9 +313,7 @@ def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_gr
                 f"[{row_style}]{escape(detalhe_lojas)}[/]"
             )
             
-        ui.print(table)
-        
-        qtd = len(marcados)
+        qtd = len(marc)
         alvo_txt = f"nos {qtd} marcados" if qtd > 0 else "em TODOS"
         
         atalhos = (
@@ -337,27 +326,43 @@ def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_gr
             f" [bold bright_yellow][V][/bold bright_yellow] Voltar para um Grupo Específico (Rollback){'' if pode_desfazer else ' [dim](Indisponível - Vazio)[/dim]'}\n"
             f" [bold bright_magenta][Q][/bold bright_magenta] Pausar Sessão e Voltar ao Hub"
         )
-        ui.print(Panel(atalhos, border_style="dim white"))
+        panel_atalhos = Panel(atalhos, border_style="dim white")
 
-        tecla = msvcrt.getch()
-        
-        if tecla in (b'\xe0', b'\x00'):
-            seta = msvcrt.getch()
-            if seta == b'H': cursor = max(0, cursor - 1)
-            elif seta == b'P': cursor = min(len(itens_pendentes) - 1, cursor + 1)
-        elif tecla == b'\r':
-            if itens_pendentes:
-                item_id = itens_pendentes[cursor].id
-                if item_id in marcados: marcados.remove(item_id)
-                else: marcados.add(item_id)
-        elif tecla.upper() == b'S': return 'S'
-        elif tecla.upper() == b'I': return 'I'
-        elif tecla.upper() == b'T': return 'T'
-        elif tecla.upper() == b'P': return 'P'
-        elif tecla.upper() == b'Q': return 'Q'
-        elif tecla.upper() == b'Z' and pode_desfazer: return 'Z'
-        elif tecla.upper() == b'V' and pode_desfazer: return 'V'
-        elif tecla == b'\x03': raise KeyboardInterrupt
+        return Group(
+            panel_progresso,
+            panel_info,
+            Text(" NAVEGAÇÃO: Setas (Cima/Baixo) | SELEÇÃO (Marcar): [ENTER]\n", style="dim"),
+            table,
+            panel_atalhos
+        )
+
+    with Live(render_layout(cursor, marcados), console=ui, screen=True, auto_refresh=False) as live:
+        while True:
+            # Caso algum item tenha sido removido e o cursor ficou de fora
+            if cursor >= len(itens_pendentes):
+                cursor = max(0, len(itens_pendentes) - 1)
+                live.update(render_layout(cursor, marcados), refresh=True)
+
+            tecla = msvcrt.getch()
+            if tecla in (b'\xe0', b'\x00'):
+                seta = msvcrt.getch()
+                if seta == b'H': cursor = max(0, cursor - 1)
+                elif seta == b'P': cursor = min(len(itens_pendentes) - 1, cursor + 1)
+                live.update(render_layout(cursor, marcados), refresh=True)
+            elif tecla == b'\r':
+                if itens_pendentes:
+                    item_id = itens_pendentes[cursor].id
+                    if item_id in marcados: marcados.remove(item_id)
+                    else: marcados.add(item_id)
+                    live.update(render_layout(cursor, marcados), refresh=True)
+            elif tecla.upper() == b'S': return 'S'
+            elif tecla.upper() == b'I': return 'I'
+            elif tecla.upper() == b'T': return 'T'
+            elif tecla.upper() == b'P': return 'P'
+            elif tecla.upper() == b'Q': return 'Q'
+            elif tecla.upper() == b'Z' and pode_desfazer: return 'Z'
+            elif tecla.upper() == b'V' and pode_desfazer: return 'V'
+            elif tecla == b'\x03': raise KeyboardInterrupt
 
 def renderizar_hub_ui(pendentes_auto, len_sessao, historico_acoes):
     ui.clear()
@@ -372,18 +377,18 @@ def renderizar_hub_ui(pendentes_auto, len_sessao, historico_acoes):
     ui.print(Align.center(f"[bold bright_cyan]{logo}[/bold bright_cyan]"))
     
     status_text = (
-        f"  [white]📦 Migrações na Fila (Prontas para exportar):[/white] [bold bright_green]{len_sessao}[/bold bright_green]  \n"
-        f"  [white]🤖 Grupos Automáticos Pendentes:[/white] [bold bright_yellow]{pendentes_auto}[/bold bright_yellow]  "
+        f"  [white] Migrações na Fila (Prontas para exportar):[/white] [bold bright_green]{len_sessao}[/bold bright_green]  \n"
+        f"  [white] Grupos Automáticos Pendentes:[/white] [bold bright_yellow]{pendentes_auto}[/bold bright_yellow]  "
     )
-    ui.print(Align.center(Panel(status_text, title="[bold bright_white] TUI Engine v2.5 [/bold bright_white]", border_style="bright_cyan", padding=(1, 2))))
+    ui.print(Align.center(Panel(status_text, title="[bold bright_white] TUI Engine v3.0 [/bold bright_white]", border_style="bright_cyan", padding=(1, 2))))
     
     ui.print("\n")
     opcoes = [
-        ("1", "🪄 Iniciar Assistente", "Inicia ou continua o agrupamento automático de duplicados.", "bright_cyan"),
-        ("2", "🎯 Migração Manual Livre", "Força a migração (De ➜ Para) escolhendo nomes e IDs.", "bright_cyan"),
-        ("Z", "↩️ Desfazer Ação", "Desfaz a última ação global da sua sessão.", "bright_cyan"),
-        ("E", "🚀 Exportar Arquivos", "Aplica as substituições e gera as planilhas finais.", "bright_green"),
-        ("Q", "🚪 Salvar e Sair", "Salva o progresso no backup e encerra a ferramenta.", "bright_red")
+        ("1", " Iniciar Assistente", "Inicia ou continua o agrupamento automático de duplicados.", "bright_cyan"),
+        ("2", " Migração Manual Livre", "Força a migração (De ➜ Para) escolhendo nomes e IDs.", "bright_cyan"),
+        ("Z", "↩ Desfazer Ação", "Desfaz a última ação global da sua sessão.", "bright_cyan"),
+        ("E", " Exportar Arquivos", "Aplica as substituições e gera as planilhas finais.", "bright_green"),
+        ("Q", " Salvar e Sair", "Salva o progresso no backup e encerra a ferramenta.", "bright_red")
     ]
     
     for tecla, titulo, desc, cor in opcoes:
@@ -395,9 +400,9 @@ def renderizar_hub_ui(pendentes_auto, len_sessao, historico_acoes):
     ui.print("[dim]" + "─" * 85 + "[/dim]")
     ui.print("   [bold bright_cyan]>[/bold bright_cyan] [blink]Aguardando comando...[/blink] ", end="")
 
-# =========================================================================
+
 # MOTOR PRINCIPAL
-# =========================================================================
+
 
 def main():
     excel_service = ExcelService()
@@ -415,13 +420,11 @@ def main():
         contagem = excel_service.contar_movimentacoes()
         grupos_duplicados = duplicate_service.encontrar_duplicados(fornecedores, contagem)
         
-        # INJEÇÃO DAS VARIÁVEIS ORIGINAIS (Base para a matemática de tempo real)
         for f in fornecedores:
             if not hasattr(f, 'movimentacoes_por_loja'): f.movimentacoes_por_loja = {}
             f.movimentacoes_originais = f.movimentacoes
             f.movimentacoes_por_loja_originais = f.movimentacoes_por_loja.copy()
         
-        # Reidratação do Backup (Aplicando estados em cascata)
         if os.path.exists(ARQUIVO_BACKUP):
             try:
                 with open(ARQUIVO_BACKUP, "r", encoding="utf-8") as f:
@@ -557,7 +560,6 @@ def main():
                                 atualizar_pendencias_grupos(grupos_duplicados, ids_processados)
                                 salvar_progresso(sessao_atual, historico_acoes)
 
-                        # NOVA LÓGICA DO BOTÃO T (SELEÇÃO MÚLTIPLA)
                         elif acao == 'T':
                             ui.print("\n[bold bright_cyan]>[/bold bright_cyan] Digite o ID ou parte do Nome para trazer ao grupo (ENTER p/ cancelar): ", end="")
                             busca = input().strip()
