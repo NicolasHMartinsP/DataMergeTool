@@ -29,6 +29,10 @@ warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 
 ARQUIVO_BACKUP = "backup_sessao.json"
 
+def limpar_tela_hard():
+    """ Marreta do Sistema Operacional para aniquilar fantasmas do buffer do terminal """
+    os.system('cls' if os.name == 'nt' else 'clear')
+
 # =========================================================================
 # LÓGICA DE ESTADO (TEMPO REAL) E PERSISTÊNCIA
 # =========================================================================
@@ -125,26 +129,36 @@ def atualizar_pendencias_grupos(grupos_duplicados, ids_processados):
     for grupo in grupos_duplicados:
         grupo.itens_pendentes = [f for f in grupo.duplicados if f.id not in ids_processados]
 
+def limpar_nome_loja(nome_arquivo):
+    return nome_arquivo.replace("Movimentações - ", "").replace("Contas a Pagar - ", "").replace(".xlsx", "").strip()
+
 # =========================================================================
-# MENUS VISUAIS "LIVE" (SEM FLICKERING / SEM PISCAR A TELA)
+# MENUS VISUAIS "LIVE" (AGORA COM SEMÂNTICA CORRETA)
 # =========================================================================
 
 def exibir_confirmacao_migracao(alvos, dest_id, nome_dest, dest_forn=None):
-    ui.clear()
-    ui.print(Panel("[bold bright_cyan]REVISÃO DE IMPACTO E MIGRAÇÃO[/bold bright_cyan]", border_style="bright_cyan"))
+    limpar_tela_hard()
+    ui.print(Panel("[bold bright_cyan]REVISÃO DE IMPACTO (SUBSTITUIÇÃO DE IDs)[/bold bright_cyan]", border_style="bright_cyan"))
     
-    t_origem = Table(title="\n[bold bright_red]FORNECEDORES QUE SERÃO ZERADOS E SUBSTITUÍDOS[/bold bright_red]", show_header=True, header_style="bold bright_red", box=box.SIMPLE)
-    t_origem.add_column("ID", style="bright_yellow")
-    t_origem.add_column("Nome", style="bright_white")
-    t_origem.add_column("Notas a Perder", style="bold red")
-    t_origem.add_column("Detalhamento de Perda (Por Loja)", style="dim white")
+    t_origem = Table(title="\n[bold bright_red]IDs ANTIGOS QUE SERÃO SUBSTITUÍDOS NO EXCEL[/bold bright_red]", show_header=True, header_style="bold bright_red", box=box.SIMPLE)
+    t_origem.add_column("ID Antigo", style="bright_yellow")
+    t_origem.add_column("Nome Descontinuado", style="bright_white")
+    t_origem.add_column("Linhas Afetadas", style="bold red", justify="center")
+    t_origem.add_column("Impacto por Arquivo (Loja)", style="dim white")
     
     total_movido = 0
+    resumo_lojas = {}
+    
     for f in alvos:
         if f.id == dest_id: continue
-        detalhe = " | ".join([f"{loja}: {qtd}" for loja, qtd in f.movimentacoes_por_loja.items()])
-        if not detalhe: detalhe = "-"
-        t_origem.add_row(f.id, escape(f.nome), str(f.movimentacoes), escape(detalhe))
+        detalhes = []
+        for loja, qtd in f.movimentacoes_por_loja.items():
+            l_limpa = limpar_nome_loja(loja)
+            detalhes.append(f"{qtd} ocor. em {l_limpa}")
+            resumo_lojas[l_limpa] = resumo_lojas.get(l_limpa, 0) + qtd
+            
+        detalhe_str = ", ".join(detalhes) if detalhes else "-"
+        t_origem.add_row(f.id, escape(f.nome), str(f.movimentacoes), escape(detalhe_str))
         total_movido += f.movimentacoes
         
     ui.print(t_origem)
@@ -152,21 +166,26 @@ def exibir_confirmacao_migracao(alvos, dest_id, nome_dest, dest_forn=None):
     qtd_atual = dest_forn.movimentacoes if dest_forn else 0
     qtd_final = qtd_atual + total_movido
     
-    dest_panel = (
-        f"  [bold bright_white]ID DESTINO:[/bold bright_white] [bright_yellow]{dest_id}[/bright_yellow]\n"
-        f"  [bold bright_white]NOME:[/bold bright_white] {escape(nome_dest)}\n\n"
-        f"  [dim]Notas Atuais:[/dim] {qtd_atual}\n"
-        f"  [bold bright_green]NOTAS APÓS MIGRAÇÃO:[/bold bright_green] [bold white]{qtd_final}[/bold white] [bold bright_green](+{total_movido})[/bold bright_green]"
-    )
-    ui.print(Panel(dest_panel, title="[bold bright_green]FORNECEDOR DESTINO (RECEBEDOR)[/bold bright_green]", border_style="bright_green"))
+    resumo_str_list = [f"[bold white]{qtd}[/bold white] ocorrência(s) no arq. de {loja}" for loja, qtd in resumo_lojas.items()]
+    resumo_texto = ", ".join(resumo_str_list) if resumo_str_list else "Nenhuma linha alterada"
     
-    ui.print("\n[bold bright_white] Pressione [ENTER] para Confirmar ou [ESC] para Cancelar... [/bold bright_white]", end="")
+    dest_panel = (
+        f"  [bold bright_white]NOVO ID (QUE ASSUMIRÁ AS LINHAS):[/bold bright_white] [bright_yellow]{dest_id}[/bright_yellow]\n"
+        f"  [bold bright_white]NOME CORRETO:[/bold bright_white] {escape(nome_dest)}\n\n"
+        f"  [dim]Linhas atuais com este ID:[/dim] {qtd_atual}\n"
+        f"  [bold bright_green]LINHAS APÓS SUBSTITUIÇÃO:[/bold bright_green] [bold white]{qtd_final}[/bold white] [bold bright_green](+{total_movido} atualizadas)[/bold bright_green]\n\n"
+        f"  [bold bright_magenta]RESUMO DA AÇÃO:[/bold bright_magenta] O novo ID será injetado em {resumo_texto}."
+    )
+    ui.print(Panel(dest_panel, title="[bold bright_green]FORNECEDOR DESTINO (ID OFICIAL)[/bold bright_green]", border_style="bright_green"))
+    
+    ui.print("\n[bold bright_white] Pressione [ENTER] para Confirmar a Substituição ou [ESC] para Cancelar... [/bold bright_white]", end="")
     while True:
         t = msvcrt.getch()
         if t == b'\r': return True
         if t == b'\x1b': return False
 
 def menu_pesquisa_nativo(resultados, termo_busca, sessao_atual, ids_processados):
+    limpar_tela_hard()
     cursor = 0
     opcoes = resultados + ["EXTERNO"]
 
@@ -176,7 +195,7 @@ def menu_pesquisa_nativo(resultados, termo_busca, sessao_atual, ids_processados)
         table.add_column("Status Atual")
         table.add_column("ID", style="bright_yellow")
         table.add_column("Fornecedor")
-        table.add_column("Notas")
+        table.add_column("Ocorrências")
 
         for i, item in enumerate(opcoes):
             is_cursor = i == pos
@@ -187,22 +206,21 @@ def menu_pesquisa_nativo(resultados, termo_busca, sessao_atual, ids_processados)
                 table.add_row(cursor_char, "-", "-", f"[{row_style}]\\[ Usar '{escape(termo_busca)}' como um ID Externo / Não Cadastrado ][/]", "-")
             else:
                 status_tag = f"[{row_style}][dim white]INTACTO[/dim white][/]"
-                if item.id in sessao_atual: status_tag = f"[bold red]MIGRADO p/ {sessao_atual[item.id]}[/bold red]"
+                if item.id in sessao_atual: status_tag = f"[bold red]SUBSTITUÍDO p/ {sessao_atual[item.id]}[/bold red]"
                 elif item.id in ids_processados: status_tag = "[bold bright_yellow]PULADO[/bold bright_yellow]"
                 elif hasattr(item, 'movimentacoes_originais') and item.movimentacoes > item.movimentacoes_originais:
-                    status_tag = f"[bold bright_green]RECEBEU NOTAS[/bold bright_green]"
-                elif item.movimentacoes == 0: status_tag = "[dim red]VAZIO[/dim red]"
+                    status_tag = f"[bold bright_green]HERDOU LINHAS[/bold bright_green]"
+                elif item.movimentacoes == 0: status_tag = "[dim red]ZERADO[/dim red]"
 
                 table.add_row(cursor_char, status_tag, f"[{row_style}]{item.id}[/]", f"[{row_style}]{escape(item.nome)}[/]", f"[{row_style}]{item.movimentacoes}[/]")
 
         return Group(
-            Panel(f"[bold bright_cyan]PESQUISA:[/bold bright_cyan] [bright_white]'{escape(termo_busca)}'[/bright_white]", border_style="bright_cyan"),
+            Panel(f"[bold bright_cyan]PESQUISA DE ID OFICIAL:[/bold bright_cyan] [bright_white]'{escape(termo_busca)}'[/bright_white]", border_style="bright_cyan"),
             Text(" NAVEGAÇÃO: Setas (Cima/Baixo) | SELEÇÃO: [ENTER] | CANCELAR: [ESC]\n", style="dim"),
             table
         )
 
-    # Motor Live: Isola a interface e renderiza instantaneamente
-    with Live(render_layout(cursor), console=ui, screen=True, auto_refresh=False) as live:
+    with Live(render_layout(cursor), console=ui, auto_refresh=False) as live:
         while True:
             tecla = msvcrt.getch()
             if tecla in (b'\xe0', b'\x00'):
@@ -215,6 +233,7 @@ def menu_pesquisa_nativo(resultados, termo_busca, sessao_atual, ids_processados)
             elif tecla == b'\x03': raise KeyboardInterrupt
 
 def menu_pesquisa_multi(resultados, termo_busca, sessao_atual, ids_processados, pendentes_ids):
+    limpar_tela_hard()
     cursor = 0
     marcados = set()
 
@@ -224,7 +243,7 @@ def menu_pesquisa_multi(resultados, termo_busca, sessao_atual, ids_processados, 
         table.add_column("Status Atual")
         table.add_column("ID", style="bright_yellow")
         table.add_column("Fornecedor")
-        table.add_column("Notas")
+        table.add_column("Ocorrências")
 
         for i, item in enumerate(resultados):
             is_cursor = i == pos
@@ -241,11 +260,11 @@ def menu_pesquisa_multi(resultados, termo_busca, sessao_atual, ids_processados, 
             elif is_selected: sel_char = "[bold bright_green][ X ][/]"
             
             status_tag = f"[{row_style}][dim white]INTACTO[/dim white][/]"
-            if item.id in sessao_atual: status_tag = f"[bold red]MIGRADO p/ {sessao_atual[item.id]}[/bold red]"
+            if item.id in sessao_atual: status_tag = f"[bold red]SUBSTITUÍDO p/ {sessao_atual[item.id]}[/bold red]"
             elif item.id in ids_processados: status_tag = "[bold bright_yellow]PULADO[/bold bright_yellow]"
             elif hasattr(item, 'movimentacoes_originais') and item.movimentacoes > item.movimentacoes_originais:
-                status_tag = f"[bold bright_green]RECEBEU NOTAS[/bold bright_green]"
-            elif item.movimentacoes == 0: status_tag = "[dim red]VAZIO[/dim red]"
+                status_tag = f"[bold bright_green]HERDOU LINHAS[/bold bright_green]"
+            elif item.movimentacoes == 0: status_tag = "[dim red]ZERADO[/dim red]"
 
             table.add_row(f"{cursor_char}{sel_char}", status_tag, f"[{row_style}]{item.id}[/]", f"[{row_style}]{escape(item.nome)}[/]", f"[{row_style}]{item.movimentacoes}[/]")
 
@@ -256,7 +275,7 @@ def menu_pesquisa_multi(resultados, termo_busca, sessao_atual, ids_processados, 
             Text(f"\n Selecionados: {len(marc)} (Pressione C para confirmar)", style="bold bright_green")
         )
 
-    with Live(render_layout(cursor, marcados), console=ui, screen=True, auto_refresh=False) as live:
+    with Live(render_layout(cursor, marcados), console=ui, auto_refresh=False) as live:
         while True:
             tecla = msvcrt.getch()
             if tecla in (b'\xe0', b'\x00'):
@@ -275,21 +294,22 @@ def menu_pesquisa_multi(resultados, termo_busca, sessao_atual, ids_processados, 
             elif tecla == b'\x03': raise KeyboardInterrupt
 
 def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_grupos, total_migracoes, pode_desfazer):
+    limpar_tela_hard()
     cursor = 0
 
     def render_layout(pos, marc):
-        progresso_txt = f"[bold bright_white]PROGRESSO:[/bold bright_white] Grupo {idx_grupo} de {total_grupos} | [bold bright_green]Migrações Salvas:[/bold bright_green] {total_migracoes}"
+        progresso_txt = f"[bold bright_white]PROGRESSO:[/bold bright_white] Grupo {idx_grupo} de {total_grupos} | [bold bright_green]Substituições Salvas:[/bold bright_green] {total_migracoes}"
         panel_progresso = Panel(Align.center(progresso_txt), border_style="dim white")
         
-        info_grupo = f"[bold bright_yellow]Motivo:[/bold bright_yellow] {escape(grupo.motivo)}\n[bold bright_green]Sugestão Global:[/bold bright_green] {grupo.mestre.id} ({escape(grupo.mestre.nome)})"
-        panel_info = Panel(info_grupo, title=f"[bold bright_cyan]GRUPO: {escape(grupo.nome)}[/bold bright_cyan]", border_style="bright_cyan")
+        info_grupo = f"[bold bright_yellow]Motivo do Agrupamento:[/bold bright_yellow] {escape(grupo.motivo)}\n[bold bright_green]ID Oficial Sugerido:[/bold bright_green] {grupo.mestre.id} ({escape(grupo.mestre.nome)})"
+        panel_info = Panel(info_grupo, title=f"[bold bright_cyan]GRUPO DE CONFLITO: {escape(grupo.nome)}[/bold bright_cyan]", border_style="bright_cyan")
         
         table = Table(show_header=True, header_style="bold bright_magenta", box=box.SIMPLE)
         table.add_column("Sel", justify="center")
-        table.add_column("ID", style="bright_yellow")
-        table.add_column("Notas", justify="right", style="bright_green")
+        table.add_column("ID Antigo", style="bright_yellow")
+        table.add_column("Ocorrências", justify="right", style="bright_green")
         table.add_column("Fornecedor", style="bright_white")
-        table.add_column("Origem (Lojas)", style="dim white")
+        table.add_column("Localização no Arquivo (Lojas)", style="dim white")
         
         for i, f in enumerate(itens_pendentes):
             is_selected = f.id in marc
@@ -302,15 +322,19 @@ def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_gr
             if is_selected and not is_cursor: 
                 row_style = "bright_green"
             
-            detalhe_lojas = " | ".join([f"{loja}: {qtd}" for loja, qtd in f.movimentacoes_por_loja.items()])
-            if f.movimentacoes == 0 and not detalhe_lojas: detalhe_lojas = "VAZIO"
+            detalhes_loja = []
+            for loja, qtd in f.movimentacoes_por_loja.items():
+                detalhes_loja.append(f"{limpar_nome_loja(loja)}: {qtd}")
+                
+            detalhe_str = " | ".join(detalhes_loja)
+            if f.movimentacoes == 0 and not detalhe_str: detalhe_str = "ZERADO"
             
             table.add_row(
                 f"{cursor_char}{sel_char}",
                 f"[{row_style}]{f.id}[/]",
                 f"[{row_style}]{f.movimentacoes}[/]",
                 f"[{row_style}]{escape(f.nome)}[/]",
-                f"[{row_style}]{escape(detalhe_lojas)}[/]"
+                f"[{row_style}]{escape(detalhe_str)}[/]"
             )
             
         qtd = len(marc)
@@ -318,11 +342,11 @@ def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_gr
         
         atalhos = (
             f"[bold bright_white]ATALHOS DIRETOS (A ação será aplicada {alvo_txt}):[/bold bright_white]\n\n"
-            f" [bold bright_cyan][S][/bold bright_cyan] Migrar para a Sugestão Global\n"
-            f" [bold bright_cyan][I][/bold bright_cyan] Informar ID / Pesquisar Manualmente (Migrar para outro)\n"
-            f" [bold bright_cyan][T][/bold bright_cyan] Trazer outro(s) Fornecedor(es) perdido(s) para este grupo\n"
-            f" [bold bright_red][P][/bold bright_red] Pular / Ignorar\n\n"
-            f" [bold bright_yellow][Z][/bold bright_yellow] Desfazer última ação{'' if pode_desfazer else ' [dim](Indisponível - Vazio)[/dim]'}\n"
+            f" [bold bright_cyan][S][/bold bright_cyan] Substituir selecionados pelo ID Oficial Sugerido\n"
+            f" [bold bright_cyan][I][/bold bright_cyan] Informar ID / Pesquisar Manualmente (Escolher outro Oficial)\n"
+            f" [bold bright_cyan][T][/bold bright_cyan] Trazer outro(s) Fornecedor(es) para resolver neste grupo\n"
+            f" [bold bright_red][P][/bold bright_red] Pular / Manter Intacto\n\n"
+            f" [bold bright_yellow][Z][/bold bright_yellow] Desfazer última substituição{'' if pode_desfazer else ' [dim](Indisponível - Vazio)[/dim]'}\n"
             f" [bold bright_yellow][V][/bold bright_yellow] Voltar para um Grupo Específico (Rollback){'' if pode_desfazer else ' [dim](Indisponível - Vazio)[/dim]'}\n"
             f" [bold bright_magenta][Q][/bold bright_magenta] Pausar Sessão e Voltar ao Hub"
         )
@@ -336,9 +360,8 @@ def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_gr
             panel_atalhos
         )
 
-    with Live(render_layout(cursor, marcados), console=ui, screen=True, auto_refresh=False) as live:
+    with Live(render_layout(cursor, marcados), console=ui, auto_refresh=False) as live:
         while True:
-            # Caso algum item tenha sido removido e o cursor ficou de fora
             if cursor >= len(itens_pendentes):
                 cursor = max(0, len(itens_pendentes) - 1)
                 live.update(render_layout(cursor, marcados), refresh=True)
@@ -365,7 +388,7 @@ def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_gr
             elif tecla == b'\x03': raise KeyboardInterrupt
 
 def renderizar_hub_ui(pendentes_auto, len_sessao, historico_acoes):
-    ui.clear()
+    limpar_tela_hard()
     logo = """
 ██████╗  █████╗ ████████╗ █████╗     ███╗   ███╗███████╗██████╗  ██████╗ ███████╗
 ██╔══██╗██╔══██╗╚══██╔══╝██╔══██╗    ████╗ ████║██╔════╝██╔══██╗██╔════╝ ██╔════╝
@@ -377,18 +400,18 @@ def renderizar_hub_ui(pendentes_auto, len_sessao, historico_acoes):
     ui.print(Align.center(f"[bold bright_cyan]{logo}[/bold bright_cyan]"))
     
     status_text = (
-        f"  [white] Migrações na Fila (Prontas para exportar):[/white] [bold bright_green]{len_sessao}[/bold bright_green]  \n"
-        f"  [white] Grupos Automáticos Pendentes:[/white] [bold bright_yellow]{pendentes_auto}[/bold bright_yellow]  "
+        f"  [white]📦 Substituições de IDs na Fila (Prontas para atualizar o Excel):[/white] [bold bright_green]{len_sessao}[/bold bright_green]  \n"
+        f"  [white]🤖 Grupos de Conflito Pendentes:[/white] [bold bright_yellow]{pendentes_auto}[/bold bright_yellow]  "
     )
-    ui.print(Align.center(Panel(status_text, title="[bold bright_white] TUI Engine v3.0 [/bold bright_white]", border_style="bright_cyan", padding=(1, 2))))
+    ui.print(Align.center(Panel(status_text, title="[bold bright_white] TUI Engine v5.5 (Find & Replace Edition) [/bold bright_white]", border_style="bright_cyan", padding=(1, 2))))
     
     ui.print("\n")
     opcoes = [
-        ("1", " Iniciar Assistente", "Inicia ou continua o agrupamento automático de duplicados.", "bright_cyan"),
-        ("2", " Migração Manual Livre", "Força a migração (De ➜ Para) escolhendo nomes e IDs.", "bright_cyan"),
-        ("Z", "↩ Desfazer Ação", "Desfaz a última ação global da sua sessão.", "bright_cyan"),
-        ("E", " Exportar Arquivos", "Aplica as substituições e gera as planilhas finais.", "bright_green"),
-        ("Q", " Salvar e Sair", "Salva o progresso no backup e encerra a ferramenta.", "bright_red")
+        ("1", "🪄 Iniciar Assistente", "Inicia ou continua o tratamento automático de duplicados.", "bright_cyan"),
+        ("2", "🎯 Forçar Substituição Manual", "Substitui um ID antigo por um oficial (De ➜ Para).", "bright_cyan"),
+        ("Z", "↩️ Desfazer Ação", "Desfaz a última substituição da sua sessão.", "bright_cyan"),
+        ("E", "🚀 Atualizar Planilhas do Excel", "Aplica todas as substituições nos arquivos físicos.", "bright_green"),
+        ("Q", "🚪 Salvar e Sair", "Salva o progresso no backup e encerra a ferramenta.", "bright_red")
     ]
     
     for tecla, titulo, desc, cor in opcoes:
@@ -400,9 +423,9 @@ def renderizar_hub_ui(pendentes_auto, len_sessao, historico_acoes):
     ui.print("[dim]" + "─" * 85 + "[/dim]")
     ui.print("   [bold bright_cyan]>[/bold bright_cyan] [blink]Aguardando comando...[/blink] ", end="")
 
-
+# =========================================================================
 # MOTOR PRINCIPAL
-
+# =========================================================================
 
 def main():
     excel_service = ExcelService()
@@ -430,36 +453,32 @@ def main():
                 with open(ARQUIVO_BACKUP, "r", encoding="utf-8") as f:
                     dados = json.load(f)
                     
-                sessao_atual = dados.get("sessao_atual", dados)
+                sessao_atual_raw = dados.get("sessao_atual", {})
                 historico_raw = dados.get("historico", [])
 
-                for acao_raw in historico_raw:
-                    alvos_data = []
-                    for aid in acao_raw['alvos_ids']:
-                        obj = duplicate_service.buscar_por_id(aid, fornecedores)
-                        if obj:
-                            alvos_data.append({
-                                'obj': obj,
-                                'movs': obj.movimentacoes_originais,
-                                'lojas': obj.movimentacoes_por_loja_originais.copy()
-                            })
-                            ids_processados.add(obj.id)
-                            
-                    dest_obj = duplicate_service.buscar_por_id(acao_raw['dest_fornecedor_id'], fornecedores) if acao_raw['dest_fornecedor_id'] else None
-                    historico_acoes.append({'tipo': acao_raw['tipo'], 'grupo_idx': acao_raw['grupo_idx'], 'alvos': alvos_data, 'dest_fornecedor': dest_obj})
+                if historico_raw:
+                    for acao_raw in historico_raw:
+                        tipo = acao_raw.get('tipo', 'M')
+                        grupo_idx = acao_raw.get('grupo_idx', 'RECUPERADO')
+                        dest_id = acao_raw.get('dest_fornecedor_id')
+                        dest_forn = duplicate_service.buscar_por_id(dest_id, fornecedores) if dest_id else None
+                        
+                        alvos_objs = [duplicate_service.buscar_por_id(aid, fornecedores) for aid in acao_raw.get('alvos_ids', [])]
+                        alvos_objs = [obj for obj in alvos_objs if obj]
+                        
+                        if not alvos_objs: continue
+                        
+                        if tipo in ['S', 'I', 'M']:
+                            aplicar_migracao_em_lote(alvos_objs, dest_id, dest_forn, migration_service, sessao_atual, ids_processados, historico_acoes, tipo, grupo_idx)
+                        elif tipo == 'P':
+                            aplicar_pulo_em_lote(alvos_objs, ids_processados, historico_acoes, grupo_idx)
+                elif sessao_atual_raw:
+                    for orig, dest in sessao_atual_raw.items():
+                        f_orig = duplicate_service.buscar_por_id(orig, fornecedores)
+                        f_dest = duplicate_service.buscar_por_id(dest, fornecedores)
+                        if f_orig:
+                            aplicar_migracao_em_lote([f_orig], dest, f_dest, migration_service, sessao_atual, ids_processados, historico_acoes, 'M', 'RECUPERADO')
 
-                for orig, dest in sessao_atual.items():
-                    f_orig = duplicate_service.buscar_por_id(orig, fornecedores)
-                    f_dest = duplicate_service.buscar_por_id(dest, fornecedores)
-                    if f_orig:
-                        migration_service.criar_migracao_individual(f_orig, dest)
-                        if f_dest:
-                            f_dest.movimentacoes += f_orig.movimentacoes_originais
-                            for loja, qtd in f_orig.movimentacoes_por_loja_originais.items():
-                                f_dest.movimentacoes_por_loja[loja] = f_dest.movimentacoes_por_loja.get(loja, 0) + qtd
-                        f_orig.movimentacoes = 0
-                        f_orig.movimentacoes_por_loja = {}
-                ids_processados.update(sessao_atual.keys())
             except Exception as e:
                 utils_console.erro(f"Erro ao ler backup anterior: {e}")
 
@@ -473,6 +492,7 @@ def main():
 
             if tecla_hub == b'1':
                 if pendentes_auto == 0:
+                    limpar_tela_hard()
                     utils_console.sucesso("\nNão há grupos automáticos pendentes.")
                     time.sleep(2)
                     continue
@@ -495,7 +515,7 @@ def main():
                         )
                         
                         if acao == 'V':
-                            ui.clear()
+                            limpar_tela_hard()
                             ui.print(Panel("[bold bright_yellow]VIAGEM NO TEMPO (RETROCEDER GRUPOS)[/bold bright_yellow]", border_style="bright_yellow"))
                             grupos_com_historico = sorted(list(set(a['grupo_idx'] for a in historico_acoes if isinstance(a['grupo_idx'], int))))
                             
@@ -525,7 +545,7 @@ def main():
                             atualizar_pendencias_grupos(grupos_duplicados, ids_processados)
                             salvar_progresso(sessao_atual, historico_acoes)
                             marcados.clear()
-                            utils_console.sucesso(f"Rollback concluído! {acoes_desfeitas} ação(ões) desfeita(s).")
+                            utils_console.sucesso(f"\nRollback concluído! {acoes_desfeitas} ação(ões) desfeita(s).")
                             time.sleep(2)
                             idx_grupo = target_idx
                             break
@@ -536,7 +556,7 @@ def main():
                             atualizar_pendencias_grupos(grupos_duplicados, ids_processados)
                             salvar_progresso(sessao_atual, historico_acoes)
                             marcados.clear()
-                            utils_console.sucesso("Desfeito com sucesso!")
+                            utils_console.sucesso("\nDesfeito com sucesso!")
                             time.sleep(1)
                             if isinstance(u_acao['grupo_idx'], int) and u_acao['grupo_idx'] < idx_grupo:
                                 idx_grupo = u_acao['grupo_idx']
@@ -553,15 +573,19 @@ def main():
                             aplicar_pulo_em_lote(alvos, ids_processados, historico_acoes, idx_grupo)
                             atualizar_pendencias_grupos(grupos_duplicados, ids_processados)
                             salvar_progresso(sessao_atual, historico_acoes)
+                            marcados.clear()
 
                         elif acao == 'S':
                             if exibir_confirmacao_migracao(alvos, grupo.mestre.id, grupo.mestre.nome, grupo.mestre):
                                 aplicar_migracao_em_lote(alvos, grupo.mestre.id, grupo.mestre, migration_service, sessao_atual, ids_processados, historico_acoes, 'S', idx_grupo)
                                 atualizar_pendencias_grupos(grupos_duplicados, ids_processados)
                                 salvar_progresso(sessao_atual, historico_acoes)
+                                marcados.clear()
 
                         elif acao == 'T':
-                            ui.print("\n[bold bright_cyan]>[/bold bright_cyan] Digite o ID ou parte do Nome para trazer ao grupo (ENTER p/ cancelar): ", end="")
+                            limpar_tela_hard()
+                            ui.print(Panel("[bold bright_cyan]TRAZER FORNECEDOR PARA O GRUPO[/bold bright_cyan]", border_style="bright_cyan"))
+                            ui.print("\n[bold bright_cyan]>[/bold bright_cyan] Digite o ID ou parte do Nome para pesquisar (ENTER p/ cancelar): ", end="")
                             busca = input().strip()
                             if not busca: continue
                             
@@ -603,6 +627,8 @@ def main():
                                 time.sleep(1.5)
 
                         elif acao == 'I':
+                            limpar_tela_hard()
+                            ui.print(Panel("[bold bright_cyan]SUBSTITUIR SELEÇÃO POR OUTRO ID[/bold bright_cyan]", border_style="bright_cyan"))
                             ui.print("\n[bold bright_cyan]>[/bold bright_cyan] Digite o ID exato OU parte do Nome (ENTER p/ cancelar): ", end="")
                             busca = input().strip()
                             if not busca: continue
@@ -638,14 +664,15 @@ def main():
                                     aplicar_migracao_em_lote(alvos, dest_id, dest_forn, migration_service, sessao_atual, ids_processados, historico_acoes, 'I', idx_grupo)
                                     atualizar_pendencias_grupos(grupos_duplicados, ids_processados)
                                     salvar_progresso(sessao_atual, historico_acoes)
+                                    marcados.clear()
 
                     if voltar_pro_hub: break
                     if len(grupo.itens_pendentes) == 0: idx_grupo += 1
 
             elif tecla_hub == b'2':
-                ui.clear()
-                ui.print(Panel("[bold bright_cyan]MIGRAÇÃO MANUAL LIVRE (DE ➜ PARA)[/bold bright_cyan]", border_style="bright_cyan"))
-                ui.print("[bold bright_white]PASSO 1: Quem vai PERDER as notas e SUMIR da base? (Origem)[/bold bright_white]")
+                limpar_tela_hard()
+                ui.print(Panel("[bold bright_cyan]SUBSTITUIÇÃO MANUAL LIVRE (DE ➜ PARA)[/bold bright_cyan]", border_style="bright_cyan"))
+                ui.print("[bold bright_white]PASSO 1: Qual ID Antigo será removido das planilhas? (Origem)[/bold bright_white]")
                 ui.print("Digite o Nome ou ID (ENTER p/ cancelar): ", end="")
                 busca_origem = input().strip()
                 if not busca_origem: continue
@@ -661,11 +688,11 @@ def main():
                     time.sleep(2)
                     continue
 
-                ui.clear()
-                ui.print(Panel("[bold bright_cyan]MIGRAÇÃO MANUAL LIVRE (DE ➜ PARA)[/bold bright_cyan]", border_style="bright_cyan"))
-                ui.print(f"[bold bright_green]ORIGEM SELECIONADA:[/bold bright_green] {origem.id} | {escape(origem.nome)} ({origem.movimentacoes} notas)\n")
+                limpar_tela_hard()
+                ui.print(Panel("[bold bright_cyan]SUBSTITUIÇÃO MANUAL LIVRE (DE ➜ PARA)[/bold bright_cyan]", border_style="bright_cyan"))
+                ui.print(f"[bold bright_green]ID ANTIGO (SERÁ SUBSTITUÍDO):[/bold bright_green] {origem.id} | {escape(origem.nome)} ({origem.movimentacoes} ocorrências)\n")
                 
-                ui.print("[bold bright_white]PASSO 2: Quem vai RECEBER as notas e FICAR na base? (Destino)[/bold bright_white]")
+                ui.print("[bold bright_white]PASSO 2: Qual será o NOVO ID Oficial nessas linhas? (Destino)[/bold bright_white]")
                 ui.print("Digite o Nome ou ID (ENTER p/ cancelar): ", end="")
                 busca_dest = input().strip()
                 if not busca_dest: continue
@@ -701,15 +728,16 @@ def main():
                 reverter_acao(u_acao, sessao_atual, ids_processados, migration_service)
                 atualizar_pendencias_grupos(grupos_duplicados, ids_processados)
                 salvar_progresso(sessao_atual, historico_acoes)
+                limpar_tela_hard()
                 utils_console.sucesso("\nÚltima ação desfeita com sucesso!")
                 time.sleep(1)
 
             elif tecla_hub == b'E':
                 todas_migracoes = migration_service.obter_migracoes()
                 if todas_migracoes:
-                    ui.clear()
-                    ui.print(Panel("[bold bright_green]🚀 EXECUTANDO MIGRAÇÕES E LIMPEZA[/bold bright_green]", expand=False))
-                    print(f"Substituindo {len(todas_migracoes)} IDs nas abas de movimentações e contas...")
+                    limpar_tela_hard()
+                    ui.print(Panel("[bold bright_green]🚀 ATUALIZANDO EXCEL E GERANDO RELATÓRIO[/bold bright_green]", expand=False))
+                    print(f"Buscando e substituindo {len(todas_migracoes)} IDs nos arquivos originais...")
                     
                     excel_service.atualizar_ids(todas_migracoes)
                     falhas = excel_service.validar_migracoes(todas_migracoes)
@@ -717,22 +745,23 @@ def main():
                     
                     ids_mortos = [m.origem for m in todas_migracoes]
                     with open("RELATORIO_EXCLUSAO.txt", "w", encoding="utf-8") as f:
-                        f.write("=== FORNECEDORES SUBSTITUIDOS ===\n")
-                        f.write("Estes IDs já não possuem notas e podem ser apagados do sistema:\n\n")
+                        f.write("=== FORNECEDORES DESCONTINUADOS ===\n")
+                        f.write("As linhas contendo estes IDs foram atualizadas com sucesso.\n")
+                        f.write("Eles já não existem nas planilhas de movimentação e podem ser deletados da base:\n\n")
                         for m in todas_migracoes:
-                            f.write(f"APAGAR ID: {m.origem}  ---> (Movido para: {m.destino})\n")
+                            f.write(f"ID DESCARTADO: {m.origem}  ---> (Substituído por: {m.destino})\n")
                     
                     print(f"\n>> Relatório gerado: RELATORIO_EXCLUSAO.txt")
                     arquivo_fornecedores_limpo = excel_service.salvar_base_fornecedores_limpa(ids_mortos)
                     report_service.mostrar_validacao(falhas, arquivos_salvos, arquivo_fornecedores_limpo)
                     sys.exit()
                 else:
-                    ui.clear()
-                    utils_console.sucesso("\nNenhuma migração na fila. Os arquivos originais permanecem inalterados.")
+                    limpar_tela_hard()
+                    utils_console.sucesso("\nNenhuma alteração na fila. Os arquivos do Excel permanecem intocados.")
                     time.sleep(2)
 
             elif tecla_hub == b'Q':
-                ui.clear()
+                limpar_tela_hard()
                 utils_console.sucesso("\nProgresso salvo com segurança em 'backup_sessao.json'. Até mais!")
                 sys.exit()
 
