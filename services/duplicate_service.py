@@ -1,3 +1,8 @@
+import sys
+import os
+# Força o Python a enxergar a pasta raiz do projeto (onde está o config.py)
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import config
 from difflib import SequenceMatcher
 

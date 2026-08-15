@@ -13,6 +13,9 @@ def separador():
     print("-" * 60)
     print()
 
+def aviso(mensagem):
+    print(f"\033[93m{mensagem}\033[0m")
+
 def erro(texto: str):
     print(f"[ERRO] {texto}")
 

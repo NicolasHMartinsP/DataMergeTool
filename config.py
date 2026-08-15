@@ -6,7 +6,7 @@
 ARQUIVO_BASE_FORNECEDORES = "The Best Almeida.xlsx"
 ABA_BASE_FORNECEDORES = "Fornecedores" 
 
-ARQUIVO_BASE_PRODUTOS = "The Best Almeida - Produto.xlsx"
+ARQUIVO_BASE_PRODUTOS = "The Best Almeida.xlsx"
 ABA_BASE_PRODUTOS = "Produto"
 
 # --- LISTA BRANCA (WHITELIST) DAS TABELAS FILHAS ---
@@ -21,4 +21,4 @@ COLUNAS_ALVO_PRODUTOS = ["Produto", "ID Produto", "Item", "Produto_ID", "Cod Pro
 
 # --- MOTOR DE SIMILARIDADE (ASSISTENTE AUTOMÁTICO) ---
 SIMILARIDADE_FORNECEDORES = 85  # Mais flexível (tolerância a erros de digitação)
-SIMILARIDADE_PRODUTOS = 95      # Rigoroso (Evita agrupar "Água 500ml" com "Água 2L")
+SIMILARIDADE_PRODUTOS = 85      # Rigoroso (Evita agrupar "Água 500ml" com "Água 2L")

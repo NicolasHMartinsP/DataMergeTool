@@ -1,4 +1,8 @@
+import sys
 import os
+# Força o Python a enxergar a pasta raiz do projeto (onde está o config.py)
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import openpyxl
 from collections import defaultdict
 import config
@@ -41,7 +45,16 @@ class ExcelService:
 
         utils_console.aviso(f"Modo Restrito (Whitelist): Varrendo APENAS as abas permitidas de {nome_entidade}...")
 
-        arquivos_na_pasta = [f for f in os.listdir(".") if f.endswith(".xlsx") and not f.startswith("~") and "ATUALIZADO" not in f and "LIMPO" not in f]
+        # Varredura profunda: entra em subpastas (como 'movimentacoes') para achar os arquivos
+        arquivos_na_pasta = []
+        for root, dirs, files in os.walk("."):
+            # Ignora pastas de sistema como .venv ou __pycache__
+            if ".venv" in root or "__pycache__" in root or ".git" in root:
+                continue
+            for f in files:
+                if f.endswith(".xlsx") and not f.startswith("~") and "ATUALIZADO" not in f and "LIMPO" not in f:
+                    # Salva o caminho completo do arquivo (ex: movimentacoes/Movimentações - Mafra.xlsx)
+                    arquivos_na_pasta.append(os.path.join(root, f))
         
         for arquivo in arquivos_na_pasta:
             if arquivo == self.base_file:
@@ -91,10 +104,18 @@ class ExcelService:
         col_id = 1
         col_nome = 2
         
-        # Encontra a Chave Primária (ID) e a Descrição do Item
+        # Encontra a Chave Primária e o Nome (Com blindagem contra a palavra MedIDa)
         for i, h in enumerate(header):
-            if "ID" in h: col_id = i + 1
-            if "NOME" in h or "DESCRIÇÃO" in h: col_nome = i + 1
+            # Quebra o cabeçalho em palavras isoladas (Ex: "ID PRODUTO" vira ['ID', 'PRODUTO'])
+            palavras = h.replace("_", " ").split()
+            
+            # Só aceita se a palavra inteira for "ID", ignorando o "ID" dentro de outras palavras
+            if "ID" in palavras or h == "ID": 
+                col_id = i + 1
+                
+            # Prioriza a coluna que se chama exatamente "NOME"
+            if h == "NOME": 
+                col_nome = i + 1
             
         if len(header) >= 3 and (header[1] == "ATIVO" or header[1] == "STATUS"):
             col_nome = 3
