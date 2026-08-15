@@ -1,25 +1,24 @@
-import os
+# =========================================================================
+# DATA MERGE V6.1 - PAINEL DE CONTROLE DA ENGINE
+# =========================================================================
 
-# ================= PASTAS =================
-PASTA_MOVIMENTACOES = "movimentacoes"
-PASTA_CONTAS = "contas"
-PASTA_SAIDA = "saida"
+# --- TABELAS PAI (CHAVES PRIMÁRIAS - IDENTIDADE REAL) ---
+ARQUIVO_BASE_FORNECEDORES = "The Best Almeida.xlsx"
+ABA_BASE_FORNECEDORES = "Fornecedores" 
 
-# ================= THE BEST ALMEIDA (A BASE PAI) =================
-ARQUIVO_FORNECEDORES = "The Best Almeida.xlsx"
-ABA_FORNECEDOR = "Fornecedor"
-COLUNA_ID = "ID"
-COLUNA_NOME = "Nome"
+ARQUIVO_BASE_PRODUTOS = "The Best Almeida - Produto.xlsx"
+ABA_BASE_PRODUTOS = "Produto"
 
-# ================= MAPEAMENTO DE FORNECEDORES =================
-COLUNA_FORNECEDOR = "Fornecedor"
+# --- LISTA BRANCA (WHITELIST) DAS TABELAS FILHAS ---
+# O script tem bloqueio total e é PROIBIDO de tocar em qualquer aba que não esteja aqui:
+ABAS_PERMITIDAS_FORNECEDORES = ["Contas a Pagar", "Notas", "Notas de Compras"]
+ABAS_PERMITIDAS_PRODUTOS = ["Itens de Compras", "Notas"]
 
-# Abas onde devemos substituir o Fornecedor nos arquivos de MOVIMENTAÇÕES
-ABAS_MOVIMENTACOES_FORNECEDOR = ["Notas", "Notas de Compras", "Compras"] 
+# --- COLUNAS-ALVO NAS TABELAS FILHAS (CHAVES ESTRANGEIRAS) ---
+# O Scanner procurará essas palavras nos cabeçalhos das abas permitidas:
+COLUNAS_ALVO_FORNECEDORES = ["Fornecedor", "ID Fornecedor", "Fornecedor_ID", "Cod Fornecedor"]
+COLUNAS_ALVO_PRODUTOS = ["Produto", "ID Produto", "Item", "Produto_ID", "Cod Produto"]
 
-# Abas onde devemos substituir o Fornecedor nos arquivos de CONTAS
-ABAS_CONTAS_FORNECEDOR = ["Contas a Pagar", "Contas Pagas", "Contas Fixas"]
-
-# ================= MAPEAMENTO DE PRODUTOS (SPRINT FUTURA) =================
-ABAS_ITENS_PRODUTO = ["Itens de Compras"]
-COLUNA_PRODUTO = "Produto"
+# --- MOTOR DE SIMILARIDADE (ASSISTENTE AUTOMÁTICO) ---
+SIMILARIDADE_FORNECEDORES = 85  # Mais flexível (tolerância a erros de digitação)
+SIMILARIDADE_PRODUTOS = 95      # Rigoroso (Evita agrupar "Água 500ml" com "Água 2L")

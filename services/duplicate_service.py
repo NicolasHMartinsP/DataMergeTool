@@ -1,102 +1,111 @@
-import unicodedata
-import re
+import config
 from difflib import SequenceMatcher
-from typing import List, Dict, Optional
-from models.entity import FornecedorEntity
-from models.duplicate_group import DuplicateGroup
+
+class GrupoDuplicatas:
+    """ Objeto que empacota o Registro Mestre e suas duplicatas para a interface """
+    def __init__(self, mestre, duplicados, motivo):
+        self.mestre = mestre
+        self.duplicados = duplicados
+        self.itens_pendentes = duplicados.copy()
+        self.motivo = motivo
+        self.nome = mestre.nome
 
 class DuplicateService:
-    def _sanitizar_nome(self, nome: str) -> str:
-        """ Remove acentos, pontuações e sufixos empresariais para melhorar o match """
-        # Remove acentos
-        nome_limpo = unicodedata.normalize('NFKD', nome).encode('ASCII', 'ignore').decode('utf-8')
-        nome_limpo = nome_limpo.upper()
+    def __init__(self, modo):
+        self.modo = modo
         
-        # Troca caracteres especiais por espaço
-        nome_limpo = re.sub(r'[^A-Z0-9\s]', ' ', nome_limpo)
-        
-        # Remove sufixos inúteis no final do nome
-        sufixos = [' LTDA', ' SA', ' S A', ' ME', ' EPP']
-        for sufixo in sufixos:
-            if nome_limpo.endswith(sufixo):
-                nome_limpo = nome_limpo[:-len(sufixo)]
-                
-        # Remove espaços duplos
-        return re.sub(r'\s+', ' ', nome_limpo).strip()
+        # Puxa dinamicamente o nível de rigor que você definiu no painel de controle
+        if self.modo == 1:
+            self.limiar = config.SIMILARIDADE_FORNECEDORES / 100.0
+        else:
+            self.limiar = config.SIMILARIDADE_PRODUTOS / 100.0
 
-    def encontrar_duplicados(self, fornecedores: List[FornecedorEntity], contagem: Dict[str, Dict]) -> List[DuplicateGroup]:
-        # 1. Atualizar movimentações
-        for f in fornecedores:
-            dados_contagem = contagem.get(f.id, {'total': 0, 'lojas': {}})
-            f.movimentacoes = dados_contagem['total']
-            f.movimentacoes_por_loja = dados_contagem['lojas']
-            f.nome_comparacao = self._sanitizar_nome(f.nome)
+    def calcular_similaridade(self, str1, str2):
+        """ Retorna uma porcentagem (0.0 a 1.0) de quão idênticos são dois textos """
+        if not str1 or not str2:
+            return 0.0
+        # O SequenceMatcher faz o alinhamento de blocos de caracteres idênticos
+        return SequenceMatcher(None, str1.lower(), str2.lower()).ratio()
         
-        # 2. Agrupamento Inteligente (Exato + Levenshtein via difflib)
-        grupos_temporarios = [] # Lista de dicts: {'nome_base': str, 'itens': [], 'motivo': str}
+    def _limpar_texto(self, texto):
+        """ Remove espaços em branco nas pontas e deixa tudo maiúsculo para não falhar por Case Sensitivity """
+        return str(texto).strip().upper()
+
+    def encontrar_duplicados(self, registros, contagem):
+        """ 
+        O Cérebro da Operação Automática:
+        1. Injeta os dados da varredura nos registros
+        2. Ordena quem é o item mais importante (mestre)
+        3. Compara o mestre com o resto da lista para achar clones
+        """
+        # Passo 1: Atualiza os registros oficiais com as ocorrências reais encontradas nas tabelas filhas
+        for reg in registros:
+            if reg.id in contagem:
+                reg.movimentacoes_por_loja = contagem[reg.id].copy()
+                reg.movimentacoes = sum(reg.movimentacoes_por_loja.values())
+            else:
+                reg.movimentacoes = 0
+                reg.movimentacoes_por_loja = {}
+
+        grupos = []
+        processados = set()
         
-        for f in fornecedores:
-            adicionado = False
+        # A lógica do "Mestre": O item que tiver MAIS notas lançadas ganha o título de oficial.
+        # Em caso de empate de notas, usa a ordem alfabética do nome para desempatar.
+        registros_ordenados = sorted(registros, key=lambda x: (x.movimentacoes, x.nome), reverse=True)
+        
+        # Passo 2: A Varredura Combinatória
+        for i, reg_mestre in enumerate(registros_ordenados):
+            if reg_mestre.id in processados:
+                continue
+                
+            duplicados_grupo = []
+            nome_mestre_limpo = self._limpar_texto(reg_mestre.nome)
             
-            for g in grupos_temporarios:
-                # Match Exato (após sanitizar)
-                if f.nome_comparacao == g['nome_base']:
-                    g['itens'].append(f)
-                    adicionado = True
-                    break
-                
-                # Match por Similaridade (>= 85%)
-                similaridade = SequenceMatcher(None, f.nome_comparacao, g['nome_base']).ratio()
-                if similaridade >= 0.85:
-                    g['itens'].append(f)
-                    g['motivo'] = f"Similaridade (~{int(similaridade * 100)}%)"
-                    adicionado = True
-                    break
+            # Ignora anomalias sem nome, impedindo que o assistente tente agrupar vários itens vazios
+            if nome_mestre_limpo == "SEM NOME" or not nome_mestre_limpo:
+                continue
+            
+            for reg_candidato in registros_ordenados[i+1:]:
+                if reg_candidato.id in processados:
+                    continue
                     
-            if not adicionado:
-                grupos_temporarios.append({
-                    'nome_base': f.nome_comparacao,
-                    'nome_exibicao': f.nome, # Guarda o nome real e bonito para a interface
-                    'itens': [f],
-                    'motivo': 'Exato'
-                })
-        
-        # 3. Filtrar apenas os duplicados e converter para a Model
-        grupos_duplicados = []
-        for g in grupos_temporarios:
-            if len(g['itens']) > 1:
-                lista_ordenada = sorted(g['itens'], key=lambda x: x.movimentacoes, reverse=True)
-                mestre = lista_ordenada[0]
+                nome_candidato_limpo = self._limpar_texto(reg_candidato.nome)
                 
-                grupos_duplicados.append(DuplicateGroup(
-                    nome=g['nome_exibicao'],
-                    mestre=mestre,
-                    duplicados=lista_ordenada,
-                    motivo=g['motivo']
-                ))
+                if nome_candidato_limpo == "SEM NOME" or not nome_candidato_limpo:
+                    continue
                 
-        return grupos_duplicados
+                # Passo 3: O Teste de DNA
+                similaridade = self.calcular_similaridade(nome_mestre_limpo, nome_candidato_limpo)
+                
+                # Se a similaridade for maior ou igual a régua do config.py (ex: 95% para produtos)
+                if similaridade >= self.limiar:
+                    duplicados_grupo.append(reg_candidato)
+                    processados.add(reg_candidato.id)
+            
+            if duplicados_grupo:
+                processados.add(reg_mestre.id)
+                porcentagem_tela = int(self.limiar * 100)
+                motivo = f"Similaridade do Nome >= {porcentagem_tela}%"
+                
+                grupo = GrupoDuplicatas(reg_mestre, duplicados_grupo, motivo)
+                grupos.append(grupo)
+                
+        return grupos
 
-    def buscar_por_id(self, id_busca: str, fornecedores: List[FornecedorEntity]) -> Optional[FornecedorEntity]:
-        for f in fornecedores:
-            if f.id == id_busca:
-                return f
+    def buscar_por_id(self, busca_id, registros):
+        """ O motor de busca rápida exata acionado quando você digita um ID Manual """
+        busca_id = str(busca_id).strip()
+        for r in registros:
+            if str(r.id).strip() == busca_id:
+                return r
         return None
 
-    # ==========================================
-    # NOVO MÉTODO PARA PESQUISA DINÂMICA
-    # ==========================================
-    def buscar_por_nome_parcial(self, termo: str, fornecedores: List[FornecedorEntity]) -> List[FornecedorEntity]:
-        termo_limpo = self._sanitizar_nome(termo)
-        termo_upper = termo.upper()
+    def buscar_por_nome_parcial(self, termo, registros):
+        """ O motor de busca flexível acionado quando você digita partes de um nome """
+        termo = str(termo).strip().lower()
         resultados = []
-        
-        for f in fornecedores:
-            # Procura usando o nome limpo (ignora acentos) ou o nome original
-            nome_comp = getattr(f, 'nome_comparacao', self._sanitizar_nome(f.nome))
-            
-            if termo_limpo in nome_comp or termo_upper in f.nome.upper():
-                resultados.append(f)
-        
-        # Retorna ordenado para os mais relevantes (com mais notas) aparecerem no topo
-        return sorted(resultados, key=lambda x: x.movimentacoes, reverse=True)
+        for r in registros:
+            if termo in r.nome.lower() or termo in str(r.id).lower():
+                resultados.append(r)
+        return resultados

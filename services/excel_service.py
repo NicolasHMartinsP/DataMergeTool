@@ -1,169 +1,188 @@
 import os
-import pandas as pd
-from typing import List, Dict
+import openpyxl
+from collections import defaultdict
 import config
-from models.entity import FornecedorEntity
-from models.migration import Migration
-from utils import console
+from utils import console as utils_console
+
+class Registro:
+    """ Objeto genérico que se adapta para Fornecedores, Produtos, etc. """
+    def __init__(self, id_reg, nome):
+        self.id = str(id_reg).strip()
+        self.nome = str(nome).strip() if nome else "SEM NOME"
+        self.movimentacoes = 0
+        self.movimentacoes_por_loja = defaultdict(int)
 
 class ExcelService:
     def __init__(self):
-        self.df_fornecedores = None
-        # Agora o sistema possui 2 motores paralelos na memória
-        self.dados_movimentacoes: Dict[str, Dict[str, pd.DataFrame]] = {}
-        self.dados_contas: Dict[str, Dict[str, pd.DataFrame]] = {}
-
-    def _garantir_pastas(self):
-        os.makedirs(config.PASTA_MOVIMENTACOES, exist_ok=True)
-        os.makedirs(config.PASTA_CONTAS, exist_ok=True)
-        os.makedirs(config.PASTA_SAIDA, exist_ok=True)
-
-    def abrir_planilhas(self):
-        self._garantir_pastas()
+        self.modo = None
+        self.base_file = ""
+        self.base_sheet = ""
+        self.workbooks = {}
+        self.mapeamento = []
         
-        # 1. Carrega The Best Almeida
-        try:
-            self.df_fornecedores = pd.read_excel(config.ARQUIVO_FORNECEDORES, sheet_name=config.ABA_FORNECEDOR)
-        except FileNotFoundError:
-            raise Exception(f"Arquivo {config.ARQUIVO_FORNECEDORES} não encontrado na raiz do projeto.")
-
-        # 2. Carrega as Movimentações (Todas as abas para não perder o histórico)
-        arquivos_mov = [f for f in os.listdir(config.PASTA_MOVIMENTACOES) if f.endswith('.xlsx') and not f.startswith('~$')]
-        for arquivo in arquivos_mov:
-            caminho = os.path.join(config.PASTA_MOVIMENTACOES, arquivo)
-            self.dados_movimentacoes[arquivo] = {}
-            xls = pd.ExcelFile(caminho)
-            for aba in xls.sheet_names:
-                self.dados_movimentacoes[arquivo][aba] = pd.read_excel(xls, sheet_name=aba)
-
-        # 3. Carrega as Contas (Todas as abas)
-        arquivos_contas = [f for f in os.listdir(config.PASTA_CONTAS) if f.endswith('.xlsx') and not f.startswith('~$')]
-        for arquivo in arquivos_contas:
-            caminho = os.path.join(config.PASTA_CONTAS, arquivo)
-            self.dados_contas[arquivo] = {}
-            xls = pd.ExcelFile(caminho)
-            for aba in xls.sheet_names:
-                self.dados_contas[arquivo][aba] = pd.read_excel(xls, sheet_name=aba)
-
-        if not self.dados_movimentacoes and not self.dados_contas:
-            console.aviso("AVISO: Nenhuma planilha encontrada nas pastas 'movimentacoes' ou 'contas'.")
-
-    def _limpar_id(self, valor) -> str:
-        id_str = str(valor).strip()
-        if id_str.endswith('.0'):
-            return id_str[:-2]
-        return id_str
-
-    def ler_fornecedores(self) -> List[FornecedorEntity]:
-        fornecedores = []
-        df_limpo = self.df_fornecedores.dropna(subset=[config.COLUNA_ID])
+    def abrir_planilhas(self, modo):
+        self.modo = modo
+        self.workbooks.clear()
+        self.mapeamento.clear()
         
-        for _, row in df_limpo.iterrows():
-            fornecedores.append(FornecedorEntity(
-                id=self._limpar_id(row[config.COLUNA_ID]),
-                nome=str(row[config.COLUNA_NOME]).strip().upper()
-            ))
-        return fornecedores
+        # Carrega as configurações de acordo com o modo de operação
+        if self.modo == 1:
+            self.base_file = config.ARQUIVO_BASE_FORNECEDORES
+            self.base_sheet = config.ABA_BASE_FORNECEDORES
+            colunas_alvo = config.COLUNAS_ALVO_FORNECEDORES
+            abas_permitidas = config.ABAS_PERMITIDAS_FORNECEDORES
+            nome_entidade = "FORNECEDORES"
+        else:
+            self.base_file = config.ARQUIVO_BASE_PRODUTOS
+            self.base_sheet = config.ABA_BASE_PRODUTOS
+            colunas_alvo = config.COLUNAS_ALVO_PRODUTOS
+            abas_permitidas = config.ABAS_PERMITIDAS_PRODUTOS
+            nome_entidade = "PRODUTOS"
 
-    def contar_movimentacoes(self) -> Dict[str, Dict]:
-        contagem = {}
+        utils_console.aviso(f"Modo Restrito (Whitelist): Varrendo APENAS as abas permitidas de {nome_entidade}...")
+
+        arquivos_na_pasta = [f for f in os.listdir(".") if f.endswith(".xlsx") and not f.startswith("~") and "ATUALIZADO" not in f and "LIMPO" not in f]
         
-        def adicionar_contagem(df, col_name, nome_arquivo):
-            if col_name in df.columns:
-                ids = df[col_name].dropna().apply(self._limpar_id).tolist()
-                for f_id in ids:
-                    if f_id not in contagem:
-                        contagem[f_id] = {'total': 0, 'lojas': {}}
-                    contagem[f_id]['total'] += 1
-                    contagem[f_id]['lojas'][nome_arquivo] = contagem[f_id]['lojas'].get(nome_arquivo, 0) + 1
+        for arquivo in arquivos_na_pasta:
+            if arquivo == self.base_file:
+                continue # O arquivo da Tabela Pai é lido separadamente
+                
+            try:
+                wb = openpyxl.load_workbook(arquivo)
+                self.workbooks[arquivo] = wb
+                
+                for aba_nome in wb.sheetnames:
+                    # TRAVA DE SEGURANÇA MÁXIMA: Ignora qualquer aba fora da Lista Branca
+                    if aba_nome not in abas_permitidas:
+                        continue 
 
-        # Conta o total de notas cruzando Movimentações e Contas ao mesmo tempo
-        for arquivo, abas in self.dados_movimentacoes.items():
-            for aba_nome in config.ABAS_MOVIMENTACOES_FORNECEDOR:
-                if aba_nome in abas:
-                    adicionar_contagem(abas[aba_nome], config.COLUNA_FORNECEDOR, arquivo)
+                    aba = wb[aba_nome]
+                    if aba.max_row > 0:
+                        header = [str(cell.value).strip().upper() if cell.value else "" for cell in aba[1]]
+                        
+                        # Match: O Scanner acha a coluna alvo ("Produto 1", "Produto 2") ignorando as de "ID"
+                        for col_idx, col_name in enumerate(header):
+                            if any(alvo.upper() in col_name for alvo in colunas_alvo):
+                                self.mapeamento.append({
+                                    'arquivo': arquivo,
+                                    'aba': aba_nome,
+                                    'col_idx': col_idx + 1 
+                                })
+                                print(f"  [+] Coluna Estrangeira Mapeada: Arquivo '{arquivo}' -> Aba '{aba_nome}' -> Coluna '{col_name}'")
+            except Exception as e:
+                print(f"Erro ao ler o arquivo {arquivo}: {e}")
 
-        for arquivo, abas in self.dados_contas.items():
-            for aba_nome in config.ABAS_CONTAS_FORNECEDOR:
-                if aba_nome in abas:
-                    adicionar_contagem(abas[aba_nome], config.COLUNA_FORNECEDOR, arquivo)
+    def ler_fornecedores(self):
+        """ Lê a Tabela Pai extraindo a Chave Primária """
+        registros = []
+        if not os.path.exists(self.base_file):
+            raise FileNotFoundError(f"Arquivo base não encontrado: {self.base_file}")
+            
+        wb = openpyxl.load_workbook(self.base_file)
+        
+        # Força a leitura na aba correta (ex: "Produto")
+        if self.base_sheet in wb.sheetnames:
+            aba = wb[self.base_sheet]
+        else:
+            aba = wb.active
+            print(f"  [!] Aviso: Aba '{self.base_sheet}' não encontrada. Usando aba ativa '{aba.title}'.")
+        
+        header = [str(cell.value).strip().upper() if cell.value else "" for cell in aba[1]]
+        col_id = 1
+        col_nome = 2
+        
+        # Encontra a Chave Primária (ID) e a Descrição do Item
+        for i, h in enumerate(header):
+            if "ID" in h: col_id = i + 1
+            if "NOME" in h or "DESCRIÇÃO" in h: col_nome = i + 1
+            
+        if len(header) >= 3 and (header[1] == "ATIVO" or header[1] == "STATUS"):
+            col_nome = 3
 
+        for row in aba.iter_rows(min_row=2):
+            v_id = row[col_id - 1].value
+            v_nome = row[col_nome - 1].value
+            if v_id:
+                registros.append(Registro(v_id, v_nome))
+        
+        return registros
+
+    def contar_movimentacoes(self):
+        contagem = defaultdict(lambda: defaultdict(int))
+        for mapa in self.mapeamento:
+            wb = self.workbooks[mapa['arquivo']]
+            aba = wb[mapa['aba']]
+            col_idx = mapa['col_idx']
+            context_name = f"{mapa['arquivo'].replace('.xlsx','')} - {mapa['aba']}"
+            
+            for row in aba.iter_rows(min_row=2):
+                val = row[col_idx - 1].value
+                if val:
+                    val_str = str(val).strip()
+                    contagem[val_str][context_name] += 1
         return contagem
 
-    def atualizar_ids(self, migracoes: List[Migration]):
-        if not migracoes:
-            return
+    def atualizar_ids(self, migracoes):
+        mapa_subst = {str(m.origem): str(m.destino) for m in migracoes}
+        for mapa in self.mapeamento:
+            wb = self.workbooks[mapa['arquivo']]
+            aba = wb[mapa['aba']]
+            col_idx = mapa['col_idx']
             
-        mapa_migracao = {str(m.origem): str(m.destino) for m in migracoes}
-        
-        def substituir(val):
-            if pd.isna(val): return val
-            id_str = self._limpar_id(val)
-            return mapa_migracao.get(id_str, id_str)
+            for row in aba.iter_rows(min_row=2):
+                cell = row[col_idx - 1]
+                val = cell.value
+                if val:
+                    val_str = str(val).strip()
+                    # Substituição exata de Chave-Valor
+                    if val_str in mapa_subst:
+                        cell.value = mapa_subst[val_str]
 
-        # Faz o Update (Localizar/Substituir) em Movimentações
-        for arquivo, abas in self.dados_movimentacoes.items():
-            for aba_nome in config.ABAS_MOVIMENTACOES_FORNECEDOR:
-                if aba_nome in abas and config.COLUNA_FORNECEDOR in abas[aba_nome].columns:
-                    abas[aba_nome][config.COLUNA_FORNECEDOR] = abas[aba_nome][config.COLUNA_FORNECEDOR].apply(substituir)
-
-        # Faz o Update em Contas (O salvador do AppSheet)
-        for arquivo, abas in self.dados_contas.items():
-            for aba_nome in config.ABAS_CONTAS_FORNECEDOR:
-                if aba_nome in abas and config.COLUNA_FORNECEDOR in abas[aba_nome].columns:
-                    abas[aba_nome][config.COLUNA_FORNECEDOR] = abas[aba_nome][config.COLUNA_FORNECEDOR].apply(substituir)
-
-    def validar_migracoes(self, migracoes: List[Migration]) -> List[str]:
-        todos_ids_atuais = set()
-        
-        for abas in self.dados_movimentacoes.values():
-            for aba_nome in config.ABAS_MOVIMENTACOES_FORNECEDOR:
-                if aba_nome in abas and config.COLUNA_FORNECEDOR in abas[aba_nome].columns:
-                    ids = abas[aba_nome][config.COLUNA_FORNECEDOR].dropna().apply(self._limpar_id).tolist()
-                    todos_ids_atuais.update(ids)
-                    
-        for abas in self.dados_contas.values():
-            for aba_nome in config.ABAS_CONTAS_FORNECEDOR:
-                if aba_nome in abas and config.COLUNA_FORNECEDOR in abas[aba_nome].columns:
-                    ids = abas[aba_nome][config.COLUNA_FORNECEDOR].dropna().apply(self._limpar_id).tolist()
-                    todos_ids_atuais.update(ids)
-
-        falhas = [m.origem for m in migracoes if m.origem in todos_ids_atuais]
-        return falhas
-
-    def salvar_planilhas(self) -> List[str]:
-        arquivos_salvos = []
-        
-        # Salva os 8 arquivos MERGED das Movimentações (com todas as abas originais)
-        for arquivo, abas in self.dados_movimentacoes.items():
-            caminho_saida = os.path.join(config.PASTA_SAIDA, f"MERGED_{arquivo}")
-            with pd.ExcelWriter(caminho_saida, engine='openpyxl') as writer:
-                for aba_nome, df in abas.items():
-                    df.to_excel(writer, sheet_name=aba_nome, index=False)
-            arquivos_salvos.append(caminho_saida)
-
-        # Salva os 8 arquivos MERGED das Contas a Pagar
-        for arquivo, abas in self.dados_contas.items():
-            caminho_saida = os.path.join(config.PASTA_SAIDA, f"MERGED_{arquivo}")
-            with pd.ExcelWriter(caminho_saida, engine='openpyxl') as writer:
-                for aba_nome, df in abas.items():
-                    df.to_excel(writer, sheet_name=aba_nome, index=False)
-            arquivos_salvos.append(caminho_saida)
+    def validar_migracoes(self, migracoes):
+        falhas = []
+        ids_origem = {str(m.origem) for m in migracoes}
+        for mapa in self.mapeamento:
+            wb = self.workbooks[mapa['arquivo']]
+            aba = wb[mapa['aba']]
+            col_idx = mapa['col_idx']
             
-        return arquivos_salvos
+            for row in aba.iter_rows(min_row=2):
+                val = row[col_idx - 1].value
+                if val and str(val).strip() in ids_origem:
+                    falhas.append(str(val).strip())
+        return list(set(falhas))
 
-    def salvar_base_fornecedores_limpa(self, ids_mortos: list):
-        if not ids_mortos:
-            return None
+    def salvar_planilhas(self):
+        salvos = []
+        for arquivo, wb in self.workbooks.items():
+            nome_salvo = f"ATUALIZADO_{arquivo}"
+            wb.save(nome_salvo)
+            salvos.append(nome_salvo)
+        return salvos
+
+    def salvar_base_fornecedores_limpa(self, ids_remover):
+        wb = openpyxl.load_workbook(self.base_file)
+        if self.base_sheet in wb.sheetnames:
+            aba = wb[self.base_sheet]
+        else:
+            aba = wb.active
+        
+        header = [str(cell.value).strip().upper() if cell.value else "" for cell in aba[1]]
+        col_id = 1
+        for i, h in enumerate(header):
+            if "ID" in h: 
+                col_id = i + 1
+                break
+        
+        linhas_para_deletar = []
+        for idx, row in enumerate(aba.iter_rows(min_row=2), start=2):
+            val = row[col_id - 1].value
+            if val and str(val).strip() in ids_remover:
+                linhas_para_deletar.append(idx)
+        
+        for idx in reversed(linhas_para_deletar):
+            aba.delete_rows(idx)
             
-        df_base = self.df_fornecedores.copy() 
-        col = config.COLUNA_ID
-        
-        df_base[col] = df_base[col].astype(str).str.strip()
-        ids_mortos_limpos = [str(i).strip() for i in ids_mortos]
-        
-        df_limpo = df_base[~df_base[col].isin(ids_mortos_limpos)]
-        
-        nome_arquivo = "ATUALIZADO_The Best Almeida.xlsx"
-        df_limpo.to_excel(nome_arquivo, index=False)
-        return nome_arquivo
+        nome_salvo = f"LIMPO_{self.base_file}"
+        wb.save(nome_salvo)
+        return nome_salvo
