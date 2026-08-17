@@ -21,4 +21,4 @@ COLUNAS_ALVO_PRODUTOS = ["Produto", "ID Produto", "Item", "Produto_ID", "Cod Pro
 
 # --- MOTOR DE SIMILARIDADE (ASSISTENTE AUTOMÁTICO) ---
 SIMILARIDADE_FORNECEDORES = 85  # Mais flexível (tolerância a erros de digitação)
-SIMILARIDADE_PRODUTOS = 85      # Rigoroso (Evita agrupar "Água 500ml" com "Água 2L")
+SIMILARIDADE_PRODUTOS = 98      # Rigoroso (Evita agrupar "Água 500ml" com "Água 2L")

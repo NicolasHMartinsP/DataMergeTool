@@ -176,7 +176,12 @@ class ExcelService:
     def salvar_planilhas(self):
         salvos = []
         for arquivo, wb in self.workbooks.items():
-            nome_salvo = f"ATUALIZADO_{arquivo}"
+            # Separa o caminho da pasta do nome do arquivo real
+            pasta, nome_arquivo = os.path.split(arquivo)
+            
+            # Gruda a tag 'ATUALIZADO_' apenas no nome do arquivo, e depois remonta o caminho
+            nome_salvo = os.path.join(pasta, f"ATUALIZADO_{nome_arquivo}")
+            
             wb.save(nome_salvo)
             salvos.append(nome_salvo)
         return salvos
@@ -204,6 +209,9 @@ class ExcelService:
         for idx in reversed(linhas_para_deletar):
             aba.delete_rows(idx)
             
-        nome_salvo = f"LIMPO_{self.base_file}"
+        # Mesmo tratamento para a base principal
+        pasta, nome_arquivo = os.path.split(self.base_file)
+        nome_salvo = os.path.join(pasta, f"LIMPO_{nome_arquivo}")
+        
         wb.save(nome_salvo)
         return nome_salvo
