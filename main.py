@@ -45,7 +45,7 @@ def selecionar_modo_operacao():
 ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝    ╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝
     """
     ui.print(Align.center(f"[bold bright_cyan]{logo}[/bold bright_cyan]"))
-    ui.print(Align.center(Panel("SELECIONE O MODO DE OPERAÇÃO - DATA MERGE v6.2.1", border_style="bright_cyan")))
+    ui.print(Align.center(Panel("SELECIONE O MODO DE OPERAÇÃO - DATA MERGE v6.2.0", border_style="bright_cyan")))
     ui.print("\n")
     ui.print("   [bold bright_cyan]>[/bold bright_cyan] [bold bright_white][ 1 ][/bold bright_white] [bold bright_cyan]Operar com FORNECEDORES[/bold bright_cyan]")
     ui.print("   [bold bright_magenta]>[/bold bright_magenta] [bold bright_white][ 2 ][/bold bright_white] [bold bright_magenta]Operar com PRODUTOS[/bold bright_magenta]")
@@ -283,12 +283,12 @@ def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_gr
         
         atalhos = (
             f"[bold bright_white]ATALHOS DIRETOS (A ação será aplicada {alvo_txt}):[/bold bright_white]\n\n"
-            f" [bold bright_cyan][S][/bold bright_cyan] Substituir selecionados pelo ID Oficial Sugerido\n"
-            f" [bold bright_cyan][I][/bold bright_cyan] Informar ID / Pesquisar Manualmente (Escolher outro Oficial)\n"
-            f" [bold bright_cyan][T][/bold bright_cyan] Trazer outro(s) registro(s) para resolver neste grupo\n"
+            f" [bold bright_cyan][S][/bold bright_cyan] Substit selecionados pelo ID Oficial Sugerido\n"
+            f" [bold bright_cyan][I][/bold bright_cyan] Informar ID / Pesquisar Manualmente (Outro Oficial)\n"
+            f" [bold bright_cyan][T][/bold bright_cyan] Trazer outro(s) registro(s) para este grupo\n"
             f" [bold bright_red][P][/bold bright_red] Pular / Manter Intacto\n\n"
-            f" [bold bright_yellow][Z][/bold bright_yellow] Desfazer última substituição{'' if pode_desfazer else ' [dim](Indisponível - Vazio)[/dim]'}\n"
-            f" [bold bright_yellow][V][/bold bright_yellow] Voltar para um Grupo Específico (Rollback){'' if pode_desfazer else ' [dim](Indisponível - Vazio)[/dim]'}\n"
+            f" [bold bright_yellow][Z][/bold bright_yellow] Desfazer última substituição{'' if pode_desfazer else ' [dim](Vazio)[/dim]'}\n"
+            f" [bold bright_yellow][V][/bold bright_yellow] Voltar para um Grupo Específico (Rollback){'' if pode_desfazer else ' [dim](Vazio)[/dim]'}\n"
             f" [bold bright_magenta][Q][/bold bright_magenta] Pausar Sessão e Voltar ao Hub"
         )
         panel_atalhos = Panel(atalhos, border_style="dim white")
@@ -435,7 +435,6 @@ def menu_pesquisa_multi(resultados, termo_busca, sessao_atual, ids_processados, 
             elif tecla == b'\x1b': return []
             elif tecla == b'\x03': raise KeyboardInterrupt
 
-
 def renderizar_hub_ui(pendentes_auto, len_sessao, historico_acoes):
     limpar_tela_hard()
     logo = """
@@ -454,7 +453,7 @@ def renderizar_hub_ui(pendentes_auto, len_sessao, historico_acoes):
         f"  [white]📦 Substituições na Fila (Prontas para atualizar o Excel):[/white] [bold bright_green]{len_sessao}[/bold bright_green]  \n"
         f"  [white]🤖 Grupos de Conflito Pendentes:[/white] [bold bright_yellow]{pendentes_auto}[/bold bright_yellow]  "
     )
-    ui.print(Align.center(Panel(status_text, title=f"[bold bright_white] DATA MERGE v6.2.1 - Modo {MODO_ENTIDADE} [/bold bright_white]", border_style=cor_modo, padding=(1, 2))))
+    ui.print(Align.center(Panel(status_text, title=f"[bold bright_white] DATA MERGE v6.2.0 - Modo {MODO_ENTIDADE} [/bold bright_white]", border_style=cor_modo, padding=(1, 2))))
     
     ui.print("\n")
     opcoes = [
@@ -497,7 +496,27 @@ def main():
         excel_service.abrir_planilhas(modo_selecionado)
         
         fornecedores = excel_service.ler_fornecedores()
-        contagem = excel_service.contar_movimentacoes()
+        contagem_raw = excel_service.contar_movimentacoes()
+        
+        # ==============================================================
+        # NOVO: FILTRO DE NORMALIZAÇÃO DE IDs (Corrige o bug numérico do ".0" do Excel)
+        # ==============================================================
+        def normalizar_id(valor):
+            s = str(valor).strip()
+            return s[:-2] if s.endswith(".0") else s
+
+        for f in fornecedores:
+            f.id = normalizar_id(f.id)
+
+        contagem = {}
+        for k, v in contagem_raw.items():
+            k_norm = normalizar_id(k)
+            if k_norm not in contagem:
+                contagem[k_norm] = {}
+            for loc, qtd in v.items():
+                contagem[k_norm][loc] = contagem[k_norm].get(loc, 0) + qtd
+        # ==============================================================
+        
         grupos_duplicados = duplicate_service.encontrar_duplicados(fornecedores, contagem)
         
         for f in fornecedores:
@@ -813,9 +832,6 @@ def main():
                 ui.print("\n[bold bright_white]Pressione qualquer tecla para voltar ao Menu Principal...[/bold bright_white]")
                 msvcrt.getch()
 
-            # ==========================================
-            # NOVO: BOTÃO 4 (ÓRFÃOS) - COM PAGINAÇÃO INTERATIVA
-            # ==========================================
             elif tecla_hub == b'4':
                 master_ids = {str(f.id).strip() for f in fornecedores}
                 orfaos = {k: v for k, v in contagem.items() if str(k).strip() not in master_ids and str(k).strip() and str(k).lower() != "none"}
@@ -887,9 +903,6 @@ def main():
                     elif t_acao == b'Q' or t_acao == b'\x1b':
                         break
 
-            # ==========================================
-            # NOVO: BOTÃO 5 (PESO MORTO) - COM PAGINAÇÃO INTERATIVA
-            # ==========================================
             elif tecla_hub == b'5':
                 inativos = [f for f in fornecedores if f.movimentacoes == 0]
                 
@@ -900,7 +913,7 @@ def main():
                     time.sleep(2)
                     continue
                 
-                tamanho_pagina = 15
+                tamanho_pagina = 10
                 total_paginas = (len(inativos) + tamanho_pagina - 1) // tamanho_pagina
                 pagina_atual = 0
                 
