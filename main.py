@@ -23,11 +23,9 @@ from services.report_service import ReportService
 from services.migration_service import MigrationService
 from utils import console as utils_console
 
-# Inicializa o motor visual avançado
 ui = Console()
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 
-# VARIÁVEIS GLOBAIS DE ESTADO (Definidas na Inicialização)
 MODO_ENTIDADE = ""
 ARQUIVO_BACKUP = ""
 
@@ -47,7 +45,7 @@ def selecionar_modo_operacao():
 ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝    ╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝
     """
     ui.print(Align.center(f"[bold bright_cyan]{logo}[/bold bright_cyan]"))
-    ui.print(Align.center(Panel("SELECIONE O MODO DE OPERAÇÃO - DATA MERGE V6.1", border_style="bright_cyan")))
+    ui.print(Align.center(Panel("SELECIONE O MODO DE OPERAÇÃO - DATA MERGE v6.2.1", border_style="bright_cyan")))
     ui.print("\n")
     ui.print("   [bold bright_cyan]>[/bold bright_cyan] [bold bright_white][ 1 ][/bold bright_white] [bold bright_cyan]Operar com FORNECEDORES[/bold bright_cyan]")
     ui.print("   [bold bright_magenta]>[/bold bright_magenta] [bold bright_white][ 2 ][/bold bright_white] [bold bright_magenta]Operar com PRODUTOS[/bold bright_magenta]")
@@ -67,7 +65,7 @@ def selecionar_modo_operacao():
             raise KeyboardInterrupt
 
 # =========================================================================
-# LÓGICA DE ESTADO (TEMPO REAL) E PERSISTÊNCIA
+# LÓGICA DE ESTADO E PERSISTÊNCIA
 # =========================================================================
 
 def salvar_progresso(sessao, historico):
@@ -138,43 +136,78 @@ def atualizar_pendencias_grupos(grupos_duplicados, ids_processados):
     for grupo in grupos_duplicados:
         grupo.itens_pendentes = [f for f in grupo.duplicados if f.id not in ids_processados]
 
-def limpar_nome_loja(nome_arquivo):
-    return nome_arquivo.replace("Movimentações - ", "").replace("Contas a Pagar - ", "").replace(".xlsx", "").strip()
+# =========================================================================
+# MENUS VISUAIS E TRATAMENTO DE TEXTO (PADRÃO TUI LIMPO)
+# =========================================================================
 
-# =========================================================================
-# MENUS VISUAIS "LIVE"
-# =========================================================================
+def limpar_nome_loja(nome_bruto):
+    import os
+    partes = nome_bruto.split(" | ")
+    if len(partes) == 3:
+        caminho, aba, coluna = partes
+        loja = os.path.basename(caminho).replace("Movimentações - ", "").replace("Contas a Pagar - ", "").strip()
+        return loja, aba, coluna
+    loja = os.path.basename(nome_bruto).replace(".xlsx", "").strip()
+    return loja, "-", "-"
+
+def formatar_localizacao_agrupada(movimentacoes_dict):
+    if not movimentacoes_dict:
+        return "-"
+    
+    resumo = {}
+    for loc_raw, qtd in movimentacoes_dict.items():
+        loja, aba, _ = limpar_nome_loja(loc_raw)
+        if loja not in resumo:
+            resumo[loja] = {'total': 0, 'abas': {}}
+        resumo[loja]['abas'][aba] = resumo[loja]['abas'].get(aba, 0) + qtd
+        resumo[loja]['total'] += qtd
+        
+    blocos = []
+    lojas_ordenadas = sorted(resumo.items(), key=lambda x: x[1]['total'], reverse=True)
+    
+    for loja, dados in lojas_ordenadas:
+        linhas_loja = []
+        linhas_loja.append(f"[bold bright_cyan]Loja:[/] [white]{escape(loja)}[/]")
+        linhas_loja.append(f"[bold bright_green]Quantidade total:[/] [white]{dados['total']}[/]")
+        
+        abas_str_list = [f"{escape(aba)} ({qtd})" for aba, qtd in dados['abas'].items()]
+        abas_str = ", ".join(abas_str_list)
+        
+        linhas_loja.append(f"[bold bright_magenta]Abas:[/] [white]{abas_str}[/]")
+        blocos.append("\n".join(linhas_loja))
+            
+    return "\n\n".join(blocos)
 
 def exibir_confirmacao_migracao(alvos, dest_id, nome_dest, dest_forn=None):
     limpar_tela_hard()
     ui.print(Panel("[bold bright_cyan]REVISÃO DE IMPACTO (SUBSTITUIÇÃO DE IDs)[/bold bright_cyan]", border_style="bright_cyan"))
     
-    t_origem = Table(title=f"\n[bold bright_red]IDs ANTIGOS ({MODO_ENTIDADE}) QUE SERÃO SUBSTITUÍDOS[/bold bright_red]", show_header=True, header_style="bold bright_red", box=box.SIMPLE)
-    t_origem.add_column("ID Antigo", style="bright_yellow")
-    t_origem.add_column("Nome Descontinuado", style="bright_white")
-    t_origem.add_column("Linhas Afetadas", style="bold red", justify="center")
-    t_origem.add_column("Impacto por Arquivo (Loja)", style="dim white")
+    t_origem = Table(title=f"\n[bold bright_red]IDs ANTIGOS ({MODO_ENTIDADE}) QUE SERÃO SUBSTITUÍDOS[/bold bright_red]", show_header=True, header_style="bold bright_red", box=box.ROUNDED, expand=True, show_lines=True)
+    t_origem.add_column("ID Antigo", style="bright_yellow", vertical="middle")
+    t_origem.add_column("Nome Descontinuado", style="bright_white", vertical="middle")
+    t_origem.add_column("Linhas Afetadas", style="bold red", justify="center", vertical="middle")
+    t_origem.add_column("Impacto Agrupado", style="white", vertical="middle")
     
     total_movido = 0
     resumo_lojas = {}
     
     for f in alvos:
         if f.id == dest_id: continue
-        detalhes = []
-        for loja, qtd in f.movimentacoes_por_loja.items():
-            l_limpa = limpar_nome_loja(loja)
-            detalhes.append(f"{qtd} ocor. em {l_limpa}")
-            resumo_lojas[l_limpa] = resumo_lojas.get(l_limpa, 0) + qtd
+        
+        texto_loc = formatar_localizacao_agrupada(f.movimentacoes_por_loja)
+        
+        for loja_raw, qtd in f.movimentacoes_por_loja.items():
+            loja, aba, coluna = limpar_nome_loja(loja_raw)
+            resumo_lojas[loja] = resumo_lojas.get(loja, 0) + qtd
             
-        detalhe_str = ", ".join(detalhes) if detalhes else "-"
-        t_origem.add_row(f.id, escape(f.nome), str(f.movimentacoes), escape(detalhe_str))
+        t_origem.add_row(f.id, escape(f.nome), str(f.movimentacoes), texto_loc)
         total_movido += f.movimentacoes
         
     ui.print(t_origem)
     
     qtd_atual = dest_forn.movimentacoes if dest_forn else 0
     qtd_final = qtd_atual + total_movido
-    resumo_str_list = [f"[bold white]{qtd}[/bold white] ocorrência(s) em {loja}" for loja, qtd in resumo_lojas.items()]
+    resumo_str_list = [f"[bold white]{qtd}[/bold white] em {loja}" for loja, qtd in resumo_lojas.items()]
     resumo_texto = ", ".join(resumo_str_list) if resumo_str_list else "Nenhuma linha alterada"
     
     dest_panel = (
@@ -192,18 +225,120 @@ def exibir_confirmacao_migracao(alvos, dest_id, nome_dest, dest_forn=None):
         if t == b'\r': return True
         if t == b'\x1b': return False
 
+def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_grupos, total_migracoes, pode_desfazer):
+    limpar_tela_hard()
+    cursor = 0
+
+    def render_layout(pos, marc):
+        progresso_txt = f"[bold bright_white]PROGRESSO:[/bold bright_white] Grupo {idx_grupo} de {total_grupos} | [bold bright_green]Substituições Salvas:[/bold bright_green] {total_migracoes}"
+        panel_progresso = Panel(Align.center(progresso_txt), border_style="dim white")
+        
+        info_grupo = f"[bold bright_yellow]Motivo do Agrupamento:[/bold bright_yellow] {escape(grupo.motivo)}\n[bold bright_green]ID Oficial Sugerido:[/bold bright_green] {grupo.mestre.id} ({escape(grupo.mestre.nome)})"
+        panel_info = Panel(info_grupo, title=f"[bold bright_cyan]GRUPO DE CONFLITO: {escape(grupo.nome)}[/bold bright_cyan]", border_style="bright_cyan")
+        
+        table = Table(show_header=True, header_style="bold bright_magenta", box=box.ROUNDED, show_lines=True)
+        table.add_column("Sel", justify="center", vertical="middle")
+        table.add_column("ID Antigo", style="bright_yellow", vertical="middle")
+        table.add_column("Ocor.", justify="right", style="bright_green", vertical="middle")
+        table.add_column("Nome do Registro", style="bright_white", vertical="middle")
+        
+        for i, f in enumerate(itens_pendentes):
+            is_selected = f.id in marc
+            is_cursor = i == pos
+            
+            sel_char = "[bold bright_green][ X ][/]" if is_selected else "[dim][   ][/]"
+            cursor_char = "[bold bright_cyan]➜[/] " if is_cursor else "  "
+            row_style = "bold bright_white" if is_cursor else "white"
+            if is_selected and not is_cursor: row_style = "bright_green"
+            
+            table.add_row(f"{cursor_char}{sel_char}", f"[{row_style}]{f.id}[/]", f"[{row_style}]{f.movimentacoes}[/]", f"[{row_style}]{escape(f.nome)}[/]")
+            
+        item_focado = itens_pendentes[pos]
+        if item_focado.movimentacoes > 0:
+            detalhes_table = Table(show_header=True, header_style="dim bright_cyan", box=box.SIMPLE_HEAD, expand=True)
+            detalhes_table.add_column("Loja", style="bright_white")
+            detalhes_table.add_column("Aba", style="bright_cyan")
+            detalhes_table.add_column("Qtd", justify="right", style="bold bright_green")
+
+            resumo_raiox = {}
+            for loc, qtd in item_focado.movimentacoes_por_loja.items():
+                loja, aba, _ = limpar_nome_loja(loc)
+                chave = (loja, aba)
+                resumo_raiox[chave] = resumo_raiox.get(chave, 0) + qtd
+
+            for (loja, aba), qtd in sorted(resumo_raiox.items()):
+                detalhes_table.add_row(escape(loja), escape(aba), str(qtd))
+            
+            panel_detalhes = Panel(detalhes_table, title=f"[bold bright_cyan]🔎 Raio-X do ID: {escape(item_focado.id)}[/]", border_style="bright_cyan")
+        else:
+            panel_detalhes = Panel("\n\n[dim white]Nenhuma ocorrência encontrada para este\nproduto nas abas permitidas.[/dim white]\n\n", title=f"[bold bright_cyan]🔎 Raio-X do ID: {escape(item_focado.id)}[/]", border_style="dim")
+
+        layout_duplo = Table.grid(expand=True)
+        layout_duplo.add_column(ratio=6)
+        layout_duplo.add_column(ratio=4)
+        layout_duplo.add_row(table, panel_detalhes)
+        
+        qtd = len(marc)
+        alvo_txt = f"nos {qtd} marcados" if qtd > 0 else "em TODOS"
+        
+        atalhos = (
+            f"[bold bright_white]ATALHOS DIRETOS (A ação será aplicada {alvo_txt}):[/bold bright_white]\n\n"
+            f" [bold bright_cyan][S][/bold bright_cyan] Substituir selecionados pelo ID Oficial Sugerido\n"
+            f" [bold bright_cyan][I][/bold bright_cyan] Informar ID / Pesquisar Manualmente (Escolher outro Oficial)\n"
+            f" [bold bright_cyan][T][/bold bright_cyan] Trazer outro(s) registro(s) para resolver neste grupo\n"
+            f" [bold bright_red][P][/bold bright_red] Pular / Manter Intacto\n\n"
+            f" [bold bright_yellow][Z][/bold bright_yellow] Desfazer última substituição{'' if pode_desfazer else ' [dim](Indisponível - Vazio)[/dim]'}\n"
+            f" [bold bright_yellow][V][/bold bright_yellow] Voltar para um Grupo Específico (Rollback){'' if pode_desfazer else ' [dim](Indisponível - Vazio)[/dim]'}\n"
+            f" [bold bright_magenta][Q][/bold bright_magenta] Pausar Sessão e Voltar ao Hub"
+        )
+        panel_atalhos = Panel(atalhos, border_style="dim white")
+
+        return Group(
+            panel_progresso, panel_info,
+            Text(" NAVEGAÇÃO: Setas (Cima/Baixo) | SELEÇÃO (Marcar): [ENTER]\n", style="dim"),
+            layout_duplo,
+            panel_atalhos
+        )
+
+    with Live(render_layout(cursor, marcados), console=ui, auto_refresh=False) as live:
+        while True:
+            if cursor >= len(itens_pendentes):
+                cursor = max(0, len(itens_pendentes) - 1)
+                live.update(render_layout(cursor, marcados), refresh=True)
+
+            tecla = msvcrt.getch()
+            if tecla in (b'\xe0', b'\x00'):
+                seta = msvcrt.getch()
+                if seta == b'H': cursor = max(0, cursor - 1)
+                elif seta == b'P': cursor = min(len(itens_pendentes) - 1, cursor + 1)
+                live.update(render_layout(cursor, marcados), refresh=True)
+            elif tecla == b'\r':
+                if itens_pendentes:
+                    item_id = itens_pendentes[cursor].id
+                    if item_id in marcados: marcados.remove(item_id)
+                    else: marcados.add(item_id)
+                    live.update(render_layout(cursor, marcados), refresh=True)
+            elif tecla.upper() == b'S': return 'S'
+            elif tecla.upper() == b'I': return 'I'
+            elif tecla.upper() == b'T': return 'T'
+            elif tecla.upper() == b'P': return 'P'
+            elif tecla.upper() == b'Q': return 'Q'
+            elif tecla.upper() == b'Z' and pode_desfazer: return 'Z'
+            elif tecla.upper() == b'V' and pode_desfazer: return 'V'
+            elif tecla == b'\x03': raise KeyboardInterrupt
+
 def menu_pesquisa_nativo(resultados, termo_busca, sessao_atual, ids_processados):
     limpar_tela_hard()
     cursor = 0
     opcoes = resultados + ["EXTERNO"]
 
     def render_layout(pos):
-        table = Table(show_header=True, header_style="bold bright_magenta", box=box.SIMPLE)
-        table.add_column("Sel", justify="center")
-        table.add_column("Status Atual")
-        table.add_column("ID", style="bright_yellow")
-        table.add_column("Nome do Registro")
-        table.add_column("Ocorrências")
+        table = Table(show_header=True, header_style="bold bright_magenta", box=box.ROUNDED, show_lines=True)
+        table.add_column("Sel", justify="center", vertical="middle")
+        table.add_column("Status Atual", vertical="middle")
+        table.add_column("ID", style="bright_yellow", vertical="middle")
+        table.add_column("Nome do Registro", vertical="middle")
+        table.add_column("Ocorrências", vertical="middle")
 
         for i, item in enumerate(opcoes):
             is_cursor = i == pos
@@ -246,12 +381,12 @@ def menu_pesquisa_multi(resultados, termo_busca, sessao_atual, ids_processados, 
     marcados = set()
 
     def render_layout(pos, marc):
-        table = Table(show_header=True, header_style="bold bright_magenta", box=box.SIMPLE)
-        table.add_column("Sel", justify="center")
-        table.add_column("Status Atual")
-        table.add_column("ID", style="bright_yellow")
-        table.add_column("Nome do Registro")
-        table.add_column("Ocorrências")
+        table = Table(show_header=True, header_style="bold bright_magenta", box=box.ROUNDED, show_lines=True)
+        table.add_column("Sel", justify="center", vertical="middle")
+        table.add_column("Status Atual", vertical="middle")
+        table.add_column("ID", style="bright_yellow", vertical="middle")
+        table.add_column("Nome do Registro", vertical="middle")
+        table.add_column("Ocorrências", vertical="middle")
 
         for i, item in enumerate(resultados):
             is_cursor = i == pos
@@ -300,89 +435,6 @@ def menu_pesquisa_multi(resultados, termo_busca, sessao_atual, ids_processados, 
             elif tecla == b'\x1b': return []
             elif tecla == b'\x03': raise KeyboardInterrupt
 
-def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_grupos, total_migracoes, pode_desfazer):
-    limpar_tela_hard()
-    cursor = 0
-
-    def render_layout(pos, marc):
-        progresso_txt = f"[bold bright_white]PROGRESSO:[/bold bright_white] Grupo {idx_grupo} de {total_grupos} | [bold bright_green]Substituições Salvas:[/bold bright_green] {total_migracoes}"
-        panel_progresso = Panel(Align.center(progresso_txt), border_style="dim white")
-        
-        info_grupo = f"[bold bright_yellow]Motivo do Agrupamento:[/bold bright_yellow] {escape(grupo.motivo)}\n[bold bright_green]ID Oficial Sugerido:[/bold bright_green] {grupo.mestre.id} ({escape(grupo.mestre.nome)})"
-        panel_info = Panel(info_grupo, title=f"[bold bright_cyan]GRUPO DE CONFLITO: {escape(grupo.nome)}[/bold bright_cyan]", border_style="bright_cyan")
-        
-        table = Table(show_header=True, header_style="bold bright_magenta", box=box.SIMPLE)
-        table.add_column("Sel", justify="center")
-        table.add_column("ID Antigo", style="bright_yellow")
-        table.add_column("Ocorrências", justify="right", style="bright_green")
-        table.add_column("Nome do Registro", style="bright_white")
-        table.add_column("Localização no Arquivo", style="dim white")
-        
-        for i, f in enumerate(itens_pendentes):
-            is_selected = f.id in marc
-            is_cursor = i == pos
-            
-            sel_char = "[bold bright_green][ X ][/]" if is_selected else "[dim][   ][/]"
-            cursor_char = "[bold bright_cyan]➜[/] " if is_cursor else "  "
-            row_style = "bold bright_white" if is_cursor else "white"
-            if is_selected and not is_cursor: row_style = "bright_green"
-            
-            detalhes_loja = []
-            for loja, qtd in f.movimentacoes_por_loja.items():
-                detalhes_loja.append(f"{limpar_nome_loja(loja)}: {qtd}")
-                
-            detalhe_str = " | ".join(detalhes_loja)
-            if f.movimentacoes == 0 and not detalhe_str: detalhe_str = "ZERADO"
-            
-            table.add_row(f"{cursor_char}{sel_char}", f"[{row_style}]{f.id}[/]", f"[{row_style}]{f.movimentacoes}[/]", f"[{row_style}]{escape(f.nome)}[/]", f"[{row_style}]{escape(detalhe_str)}[/]")
-            
-        qtd = len(marc)
-        alvo_txt = f"nos {qtd} marcados" if qtd > 0 else "em TODOS"
-        
-        atalhos = (
-            f"[bold bright_white]ATALHOS DIRETOS (A ação será aplicada {alvo_txt}):[/bold bright_white]\n\n"
-            f" [bold bright_cyan][S][/bold bright_cyan] Substituir selecionados pelo ID Oficial Sugerido\n"
-            f" [bold bright_cyan][I][/bold bright_cyan] Informar ID / Pesquisar Manualmente (Escolher outro Oficial)\n"
-            f" [bold bright_cyan][T][/bold bright_cyan] Trazer outro(s) registro(s) para resolver neste grupo\n"
-            f" [bold bright_red][P][/bold bright_red] Pular / Manter Intacto\n\n"
-            f" [bold bright_yellow][Z][/bold bright_yellow] Desfazer última substituição{'' if pode_desfazer else ' [dim](Indisponível - Vazio)[/dim]'}\n"
-            f" [bold bright_yellow][V][/bold bright_yellow] Voltar para um Grupo Específico (Rollback){'' if pode_desfazer else ' [dim](Indisponível - Vazio)[/dim]'}\n"
-            f" [bold bright_magenta][Q][/bold bright_magenta] Pausar Sessão e Voltar ao Hub"
-        )
-        panel_atalhos = Panel(atalhos, border_style="dim white")
-
-        return Group(
-            panel_progresso, panel_info,
-            Text(" NAVEGAÇÃO: Setas (Cima/Baixo) | SELEÇÃO (Marcar): [ENTER]\n", style="dim"),
-            table, panel_atalhos
-        )
-
-    with Live(render_layout(cursor, marcados), console=ui, auto_refresh=False) as live:
-        while True:
-            if cursor >= len(itens_pendentes):
-                cursor = max(0, len(itens_pendentes) - 1)
-                live.update(render_layout(cursor, marcados), refresh=True)
-
-            tecla = msvcrt.getch()
-            if tecla in (b'\xe0', b'\x00'):
-                seta = msvcrt.getch()
-                if seta == b'H': cursor = max(0, cursor - 1)
-                elif seta == b'P': cursor = min(len(itens_pendentes) - 1, cursor + 1)
-                live.update(render_layout(cursor, marcados), refresh=True)
-            elif tecla == b'\r':
-                if itens_pendentes:
-                    item_id = itens_pendentes[cursor].id
-                    if item_id in marcados: marcados.remove(item_id)
-                    else: marcados.add(item_id)
-                    live.update(render_layout(cursor, marcados), refresh=True)
-            elif tecla.upper() == b'S': return 'S'
-            elif tecla.upper() == b'I': return 'I'
-            elif tecla.upper() == b'T': return 'T'
-            elif tecla.upper() == b'P': return 'P'
-            elif tecla.upper() == b'Q': return 'Q'
-            elif tecla.upper() == b'Z' and pode_desfazer: return 'Z'
-            elif tecla.upper() == b'V' and pode_desfazer: return 'V'
-            elif tecla == b'\x03': raise KeyboardInterrupt
 
 def renderizar_hub_ui(pendentes_auto, len_sessao, historico_acoes):
     limpar_tela_hard()
@@ -402,12 +454,15 @@ def renderizar_hub_ui(pendentes_auto, len_sessao, historico_acoes):
         f"  [white]📦 Substituições na Fila (Prontas para atualizar o Excel):[/white] [bold bright_green]{len_sessao}[/bold bright_green]  \n"
         f"  [white]🤖 Grupos de Conflito Pendentes:[/white] [bold bright_yellow]{pendentes_auto}[/bold bright_yellow]  "
     )
-    ui.print(Align.center(Panel(status_text, title=f"[bold bright_white] DATA MERGE v6.1 - Modo {MODO_ENTIDADE} [/bold bright_white]", border_style=cor_modo, padding=(1, 2))))
+    ui.print(Align.center(Panel(status_text, title=f"[bold bright_white] DATA MERGE v6.2.1 - Modo {MODO_ENTIDADE} [/bold bright_white]", border_style=cor_modo, padding=(1, 2))))
     
     ui.print("\n")
     opcoes = [
         ("1", "🪄 Iniciar Assistente", "Inicia ou continua o tratamento automático de duplicados.", "bright_cyan"),
         ("2", "🎯 Forçar Substituição Manual", "Substitui um ID antigo por um oficial (De ➜ Para).", "bright_cyan"),
+        ("3", "🔍 Pesquisar Registro (Raio-X)", "Consulta ONDE um registro está nas planilhas (Leitura).", "bright_yellow"),
+        ("4", "👻 Caçador de Órfãos", "Auditoria de IDs lançados nas lojas que NÃO existem na base.", "bright_magenta"),
+        ("5", "🗑️ Limpar Peso Morto", "Auditoria de itens cadastrados na base que NUNCA foram usados.", "bright_magenta"),
         ("Z", "↩️ Desfazer Ação", "Desfaz a última substituição da sua sessão.", "bright_cyan"),
         ("E", "🚀 Atualizar Planilhas do Excel", "Aplica todas as substituições nos arquivos físicos.", "bright_green"),
         ("Q", "🚪 Salvar e Sair", f"Salva o progresso no {ARQUIVO_BACKUP} e encerra.", "bright_red")
@@ -439,7 +494,6 @@ def main():
     ids_processados = set()
 
     try:
-        # AQUI É ONDE O MODO ESCOLHIDO NA TELA ENTRA NO MOTOR:
         excel_service.abrir_planilhas(modo_selecionado)
         
         fornecedores = excel_service.ler_fornecedores()
@@ -707,6 +761,194 @@ def main():
                         aplicar_migracao_em_lote([origem], dest_id, dest_forn, migration_service, sessao_atual, ids_processados, historico_acoes, 'M', 'MANUAL')
                         atualizar_pendencias_grupos(grupos_duplicados, ids_processados)
                         salvar_progresso(sessao_atual, historico_acoes)
+            
+            elif tecla_hub == b'3':
+                limpar_tela_hard()
+                ui.print(Panel(f"[bold bright_yellow]🔍 MODO DE PESQUISA (RAIO-X DE {MODO_ENTIDADE})[/bold bright_yellow]", border_style="bright_yellow"))
+                ui.print("[bold bright_white]Qual registro você deseja consultar nas planilhas?[/bold bright_white]")
+                ui.print("Digite o Nome ou ID (ENTER p/ cancelar): ", end="")
+                busca = input().strip()
+                if not busca: continue
+                
+                resultados = duplicate_service.buscar_por_nome_parcial(busca, fornecedores)
+                alvo = None
+                
+                exato = duplicate_service.buscar_por_id(busca, fornecedores)
+                if exato:
+                    alvo = exato
+                elif resultados:
+                    escolha = menu_pesquisa_nativo(resultados, busca, sessao_atual, ids_processados)
+                    if escolha == "EXTERNO" or escolha is None:
+                        continue
+                    alvo = escolha
+                else:
+                    ui.print(f"\n[bold red][AVISO][/bold red] Nada encontrado na base oficial com '{escape(busca)}'.")
+                    time.sleep(2)
+                    continue
+                    
+                limpar_tela_hard()
+                titulo_box = f"[bold bright_yellow]🔍 RESULTADO DO RAIO-X[/bold bright_yellow]\n[bold white]ID:[/bold white] {alvo.id} | [bold white]NOME:[/bold white] {escape(alvo.nome)}"
+                ui.print(Panel(titulo_box, border_style="bright_yellow"))
+                
+                if alvo.movimentacoes > 0:
+                    t_raiox = Table(show_header=True, header_style="bold bright_yellow", box=box.ROUNDED, expand=True, show_lines=True)
+                    t_raiox.add_column("🏪 Loja / Arquivo", style="bright_white", vertical="middle")
+                    t_raiox.add_column("📑 Aba (Planilha)", style="bright_cyan", vertical="middle")
+                    t_raiox.add_column("📦 Quantidade", justify="right", style="bold bright_green", vertical="middle")
+                    
+                    resumo_raiox = {}
+                    for loc_raw, qtd in alvo.movimentacoes_por_loja.items():
+                        loja, aba, _ = limpar_nome_loja(loc_raw)
+                        chave = (loja, aba)
+                        resumo_raiox[chave] = resumo_raiox.get(chave, 0) + qtd
+
+                    for (loja, aba), qtd in sorted(resumo_raiox.items()):
+                        t_raiox.add_row(escape(loja), escape(aba), str(qtd))
+                        
+                    ui.print(t_raiox)
+                    ui.print(f"\n[dim white]Total: {alvo.movimentacoes} ocorrência(s) encontrada(s) no sistema.[/dim white]")
+                else:
+                    ui.print("\n[bold red]Este registro existe na sua base oficial, mas não foi encontrado nenhuma vez nas planilhas escaneadas.[/bold red]")
+                    
+                ui.print("\n[bold bright_white]Pressione qualquer tecla para voltar ao Menu Principal...[/bold bright_white]")
+                msvcrt.getch()
+
+            # ==========================================
+            # NOVO: BOTÃO 4 (ÓRFÃOS) - COM PAGINAÇÃO INTERATIVA
+            # ==========================================
+            elif tecla_hub == b'4':
+                master_ids = {str(f.id).strip() for f in fornecedores}
+                orfaos = {k: v for k, v in contagem.items() if str(k).strip() not in master_ids and str(k).strip() and str(k).lower() != "none"}
+                
+                if not orfaos:
+                    limpar_tela_hard()
+                    ui.print(Panel(f"[bold bright_magenta]👻 CAÇADOR DE ÓRFÃOS ({MODO_ENTIDADE}S FANTASMAS)[/bold bright_magenta]", border_style="bright_magenta"))
+                    utils_console.sucesso("\nParabéns! Não há nenhum ID fantasma nas suas planilhas de movimentação.")
+                    time.sleep(2)
+                    continue
+                
+                orfaos_ordenados = sorted(orfaos.items(), key=lambda item: sum(item[1].values()), reverse=True)
+                total_geral_linhas = sum(sum(locs.values()) for locs in orfaos.values())
+                
+                tamanho_pagina = 10
+                total_paginas = (len(orfaos_ordenados) + tamanho_pagina - 1) // tamanho_pagina
+                pagina_atual = 0
+                
+                while True:
+                    limpar_tela_hard()
+                    ui.print(Panel(f"[bold bright_magenta]👻 CAÇADOR DE ÓRFÃOS ({MODO_ENTIDADE}S FANTASMAS)[/bold bright_magenta]", border_style="bright_magenta"))
+                    
+                    t_orfaos = Table(show_header=True, header_style="bold bright_magenta", box=box.ROUNDED, expand=True, show_lines=True)
+                    t_orfaos.add_column("ID Fantasma", style="bold bright_yellow", vertical="middle")
+                    t_orfaos.add_column("Qtd", justify="center", style="bold bright_red", vertical="middle")
+                    t_orfaos.add_column("📍 Onde encontrar (Agrupado por Loja)", style="white", vertical="middle")
+                    
+                    inicio = pagina_atual * tamanho_pagina
+                    fim = inicio + tamanho_pagina
+                    
+                    for orf_id, locs in orfaos_ordenados[inicio:fim]:
+                        total_loc = sum(locs.values())
+                        texto_loc = formatar_localizacao_agrupada(locs)
+                        t_orfaos.add_row(escape(str(orf_id)), str(total_loc), texto_loc)
+                        
+                    ui.print(t_orfaos)
+                    
+                    ui.print(f"\n[bold bright_red]Resumo Geral:[/bold bright_red] {len(orfaos_ordenados)} IDs não cadastrados no total (Impactando {total_geral_linhas} linhas).")
+                    ui.print(f"[bold bright_cyan]Exibindo grupo {pagina_atual + 1} de {total_paginas}[/bold bright_cyan]\n")
+                    
+                    opcoes_rodape = []
+                    if pagina_atual < total_paginas - 1:
+                        opcoes_rodape.append("[bold bright_white][N][/bold bright_white] Próximo Grupo")
+                    if pagina_atual > 0:
+                        opcoes_rodape.append("[bold bright_white][A][/bold bright_white] Grupo Anterior")
+                    opcoes_rodape.append("[bold bright_white][E][/bold bright_white] Exportar Relatório .txt")
+                    opcoes_rodape.append("[bold bright_white][Q][/bold bright_white] Voltar ao Menu")
+                    
+                    ui.print(" | ".join(opcoes_rodape))
+                    
+                    t_acao = msvcrt.getch().upper()
+                    
+                    if (t_acao == b'N' or t_acao == b'P') and pagina_atual < total_paginas - 1:
+                        pagina_atual += 1
+                    elif (t_acao == b'A' or t_acao == b'V') and pagina_atual > 0:
+                        pagina_atual -= 1
+                    elif t_acao == b'E':
+                        with open("RELATORIO_ORFAOS.txt", "w", encoding="utf-8") as f_out:
+                            f_out.write(f"=== RELATORIO DE {MODO_ENTIDADE}S ORFAOS (FANTASMAS) ===\n")
+                            f_out.write("Estes IDs foram lancados nas lojas, mas NAO existem na base oficial:\n\n")
+                            for orf_id, locs in orfaos_ordenados:
+                                f_out.write(f"ID FANTASMA: {orf_id} (Aparece {sum(locs.values())} vezes)\n")
+                                for loc_raw, qtd in locs.items():
+                                    loja, aba, coluna = limpar_nome_loja(loc_raw)
+                                    f_out.write(f"  -> Loja: {loja} | Aba: {aba} | Coluna: {coluna} | Quantidade: {qtd}\n")
+                                f_out.write("-" * 50 + "\n")
+                        utils_console.sucesso("\nRelatório exportado com sucesso: RELATORIO_ORFAOS.txt")
+                        time.sleep(2)
+                    elif t_acao == b'Q' or t_acao == b'\x1b':
+                        break
+
+            # ==========================================
+            # NOVO: BOTÃO 5 (PESO MORTO) - COM PAGINAÇÃO INTERATIVA
+            # ==========================================
+            elif tecla_hub == b'5':
+                inativos = [f for f in fornecedores if f.movimentacoes == 0]
+                
+                if not inativos:
+                    limpar_tela_hard()
+                    ui.print(Panel(f"[bold bright_magenta]🗑️ LIMPEZA DE PESO MORTO ({MODO_ENTIDADE}S INATIVOS)[/bold bright_magenta]", border_style="bright_magenta"))
+                    utils_console.sucesso("\nExcelente! Todos os registros da base oficial possuem movimentações nas planilhas.")
+                    time.sleep(2)
+                    continue
+                
+                tamanho_pagina = 15
+                total_paginas = (len(inativos) + tamanho_pagina - 1) // tamanho_pagina
+                pagina_atual = 0
+                
+                while True:
+                    limpar_tela_hard()
+                    ui.print(Panel(f"[bold bright_magenta]🗑️ LIMPEZA DE PESO MORTO ({MODO_ENTIDADE}S INATIVOS)[/bold bright_magenta]", border_style="bright_magenta"))
+                    
+                    t_inativos = Table(show_header=True, header_style="bold bright_magenta", box=box.ROUNDED, expand=True, show_lines=True)
+                    t_inativos.add_column("ID Oficial", style="bright_yellow", vertical="middle")
+                    t_inativos.add_column("Nome do Registro", style="bright_white", vertical="middle")
+                    
+                    inicio = pagina_atual * tamanho_pagina
+                    fim = inicio + tamanho_pagina
+                    
+                    for inativo in inativos[inicio:fim]:
+                        t_inativos.add_row(escape(inativo.id), escape(inativo.nome))
+                        
+                    ui.print(t_inativos)
+                    
+                    ui.print(f"\n[bold bright_yellow]Resumo Geral:[/bold bright_yellow] Foram encontrados {len(inativos)} registros com ZERO compras no sistema.")
+                    ui.print(f"[bold bright_cyan]Exibindo grupo {pagina_atual + 1} de {total_paginas}[/bold bright_cyan]\n")
+                    
+                    opcoes_rodape = []
+                    if pagina_atual < total_paginas - 1:
+                        opcoes_rodape.append("[bold bright_white][N][/bold bright_white] Próximo Grupo")
+                    if pagina_atual > 0:
+                        opcoes_rodape.append("[bold bright_white][A][/bold bright_white] Grupo Anterior")
+                    opcoes_rodape.append("[bold bright_white][E][/bold bright_white] Exportar Relatório .txt")
+                    opcoes_rodape.append("[bold bright_white][Q][/bold bright_white] Voltar ao Menu")
+                    
+                    ui.print(" | ".join(opcoes_rodape))
+                    
+                    t_acao = msvcrt.getch().upper()
+                    
+                    if (t_acao == b'N' or t_acao == b'P') and pagina_atual < total_paginas - 1:
+                        pagina_atual += 1
+                    elif (t_acao == b'A' or t_acao == b'V') and pagina_atual > 0:
+                        pagina_atual -= 1
+                    elif t_acao == b'E':
+                        with open("RELATORIO_PESO_MORTO.txt", "w", encoding="utf-8") as f_out:
+                            f_out.write(f"=== RELATORIO DE {MODO_ENTIDADE}S INATIVOS (PESO MORTO) ===\n")
+                            f_out.write("Estes registros existem na base oficial, mas NUNCA foram usados em nenhuma loja:\n\n")
+                            for inativo in inativos:
+                                f_out.write(f"ID: {inativo.id} | Nome: {inativo.nome}\n")
+                        utils_console.sucesso("\nRelatório exportado com sucesso: RELATORIO_PESO_MORTO.txt")
+                        time.sleep(2)
+                    elif t_acao == b'Q' or t_acao == b'\x1b':
+                        break
 
             elif tecla_hub == b'Z' and historico_acoes:
                 u_acao = historico_acoes.pop()

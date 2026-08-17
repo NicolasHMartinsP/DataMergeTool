@@ -75,11 +75,12 @@ class ExcelService:
                         
                         # Match: O Scanner acha a coluna alvo ("Produto 1", "Produto 2") ignorando as de "ID"
                         for col_idx, col_name in enumerate(header):
-                            if any(alvo.upper() in col_name for alvo in colunas_alvo):
+                         if any(alvo.upper() in col_name for alvo in colunas_alvo):
                                 self.mapeamento.append({
                                     'arquivo': arquivo,
                                     'aba': aba_nome,
-                                    'col_idx': col_idx + 1 
+                                    'col_idx': col_idx + 1,
+                                    'col_nome': col_name  # <--- NOVA LINHA AQUI
                                 })
                                 print(f"  [+] Coluna Estrangeira Mapeada: Arquivo '{arquivo}' -> Aba '{aba_nome}' -> Coluna '{col_name}'")
             except Exception as e:
@@ -134,7 +135,7 @@ class ExcelService:
             wb = self.workbooks[mapa['arquivo']]
             aba = wb[mapa['aba']]
             col_idx = mapa['col_idx']
-            context_name = f"{mapa['arquivo'].replace('.xlsx','')} - {mapa['aba']}"
+            context_name = f"{mapa['arquivo'].replace('.xlsx','')} | {mapa['aba']} | {mapa.get('col_nome', 'Desconhecida')}"
             
             for row in aba.iter_rows(min_row=2):
                 val = row[col_idx - 1].value
