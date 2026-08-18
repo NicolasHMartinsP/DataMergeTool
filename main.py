@@ -156,10 +156,15 @@ def formatar_localizacao_agrupada(movimentacoes_dict):
     
     resumo = {}
     for loc_raw, qtd in movimentacoes_dict.items():
-        loja, aba, _ = limpar_nome_loja(loc_raw)
+        loja, aba, coluna = limpar_nome_loja(loc_raw)
         if loja not in resumo:
-            resumo[loja] = {'total': 0, 'abas': {}}
+            resumo[loja] = {'total': 0, 'abas': {}, 'colunas': {}}
+        
         resumo[loja]['abas'][aba] = resumo[loja]['abas'].get(aba, 0) + qtd
+        
+        col_nome = coluna if coluna and coluna != "-" else "Desconhecida"
+        resumo[loja]['colunas'][col_nome] = resumo[loja]['colunas'].get(col_nome, 0) + qtd
+        
         resumo[loja]['total'] += qtd
         
     blocos = []
@@ -172,8 +177,13 @@ def formatar_localizacao_agrupada(movimentacoes_dict):
         
         abas_str_list = [f"{escape(aba)} ({qtd})" for aba, qtd in dados['abas'].items()]
         abas_str = ", ".join(abas_str_list)
-        
         linhas_loja.append(f"[bold bright_magenta]Abas:[/] [white]{abas_str}[/]")
+        
+        # AQUI FOI INJETADO A LINHA DE COLUNAS RESTAURADA
+        colunas_str_list = [f"{escape(col)} ({qtd})" for col, qtd in dados['colunas'].items()]
+        colunas_str = ", ".join(colunas_str_list)
+        linhas_loja.append(f"[bold bright_yellow]Colunas:[/] [white]{colunas_str}[/]")
+        
         blocos.append("\n".join(linhas_loja))
             
     return "\n\n".join(blocos)
@@ -258,16 +268,17 @@ def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_gr
             detalhes_table = Table(show_header=True, header_style="dim bright_cyan", box=box.SIMPLE_HEAD, expand=True)
             detalhes_table.add_column("Loja", style="bright_white")
             detalhes_table.add_column("Aba", style="bright_cyan")
+            detalhes_table.add_column("Coluna", style="bright_yellow") # <-- Coluna Restaurada
             detalhes_table.add_column("Qtd", justify="right", style="bold bright_green")
 
             resumo_raiox = {}
             for loc, qtd in item_focado.movimentacoes_por_loja.items():
-                loja, aba, _ = limpar_nome_loja(loc)
-                chave = (loja, aba)
+                loja, aba, coluna = limpar_nome_loja(loc)
+                chave = (loja, aba, coluna)
                 resumo_raiox[chave] = resumo_raiox.get(chave, 0) + qtd
 
-            for (loja, aba), qtd in sorted(resumo_raiox.items()):
-                detalhes_table.add_row(escape(loja), escape(aba), str(qtd))
+            for (loja, aba, col), qtd in sorted(resumo_raiox.items()):
+                detalhes_table.add_row(escape(loja), escape(aba), escape(col), str(qtd))
             
             panel_detalhes = Panel(detalhes_table, title=f"[bold bright_cyan]🔎 Raio-X do ID: {escape(item_focado.id)}[/]", border_style="bright_cyan")
         else:
@@ -283,12 +294,12 @@ def menu_interativo_nativo(grupo, itens_pendentes, marcados, idx_grupo, total_gr
         
         atalhos = (
             f"[bold bright_white]ATALHOS DIRETOS (A ação será aplicada {alvo_txt}):[/bold bright_white]\n\n"
-            f" [bold bright_cyan][S][/bold bright_cyan] Substit selecionados pelo ID Oficial Sugerido\n"
-            f" [bold bright_cyan][I][/bold bright_cyan] Informar ID / Pesquisar Manualmente (Outro Oficial)\n"
-            f" [bold bright_cyan][T][/bold bright_cyan] Trazer outro(s) registro(s) para este grupo\n"
+            f" [bold bright_cyan][S][/bold bright_cyan] Substituir selecionados pelo ID Oficial Sugerido\n"
+            f" [bold bright_cyan][I][/bold bright_cyan] Informar ID / Pesquisar Manualmente (Escolher outro Oficial)\n"
+            f" [bold bright_cyan][T][/bold bright_cyan] Trazer outro(s) registro(s) para resolver neste grupo\n"
             f" [bold bright_red][P][/bold bright_red] Pular / Manter Intacto\n\n"
-            f" [bold bright_yellow][Z][/bold bright_yellow] Desfazer última substituição{'' if pode_desfazer else ' [dim](Vazio)[/dim]'}\n"
-            f" [bold bright_yellow][V][/bold bright_yellow] Voltar para um Grupo Específico (Rollback){'' if pode_desfazer else ' [dim](Vazio)[/dim]'}\n"
+            f" [bold bright_yellow][Z][/bold bright_yellow] Desfazer última substituição{'' if pode_desfazer else ' [dim](Indisponível - Vazio)[/dim]'}\n"
+            f" [bold bright_yellow][V][/bold bright_yellow] Voltar para um Grupo Específico (Rollback){'' if pode_desfazer else ' [dim](Indisponível - Vazio)[/dim]'}\n"
             f" [bold bright_magenta][Q][/bold bright_magenta] Pausar Sessão e Voltar ao Hub"
         )
         panel_atalhos = Panel(atalhos, border_style="dim white")
@@ -434,6 +445,7 @@ def menu_pesquisa_multi(resultados, termo_busca, sessao_atual, ids_processados, 
             elif tecla.upper() == b'C': return [r for r in resultados if r.id in marcados]
             elif tecla == b'\x1b': return []
             elif tecla == b'\x03': raise KeyboardInterrupt
+
 
 def renderizar_hub_ui(pendentes_auto, len_sessao, historico_acoes):
     limpar_tela_hard()
@@ -813,16 +825,17 @@ def main():
                     t_raiox = Table(show_header=True, header_style="bold bright_yellow", box=box.ROUNDED, expand=True, show_lines=True)
                     t_raiox.add_column("🏪 Loja / Arquivo", style="bright_white", vertical="middle")
                     t_raiox.add_column("📑 Aba (Planilha)", style="bright_cyan", vertical="middle")
+                    t_raiox.add_column("🏷️ Coluna", style="bright_yellow", vertical="middle") # <-- Coluna Restaurada
                     t_raiox.add_column("📦 Quantidade", justify="right", style="bold bright_green", vertical="middle")
                     
                     resumo_raiox = {}
                     for loc_raw, qtd in alvo.movimentacoes_por_loja.items():
-                        loja, aba, _ = limpar_nome_loja(loc_raw)
-                        chave = (loja, aba)
+                        loja, aba, coluna = limpar_nome_loja(loc_raw)
+                        chave = (loja, aba, coluna)
                         resumo_raiox[chave] = resumo_raiox.get(chave, 0) + qtd
 
-                    for (loja, aba), qtd in sorted(resumo_raiox.items()):
-                        t_raiox.add_row(escape(loja), escape(aba), str(qtd))
+                    for (loja, aba, col), qtd in sorted(resumo_raiox.items()):
+                        t_raiox.add_row(escape(loja), escape(aba), escape(col), str(qtd))
                         
                     ui.print(t_raiox)
                     ui.print(f"\n[dim white]Total: {alvo.movimentacoes} ocorrência(s) encontrada(s) no sistema.[/dim white]")

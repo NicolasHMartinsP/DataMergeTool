@@ -16,6 +16,315 @@
                 "3c0d0cb1"
             ],
             "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 0,
+            "alvos_ids": [
+                "4fd86515",
+                "9501fcf1"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 1,
+            "alvos_ids": [
+                "dec6d522",
+                "541fed04"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 2,
+            "alvos_ids": [
+                "4a937fbe",
+                "6cf09a20",
+                "86928036"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 3,
+            "alvos_ids": [
+                "5022f3cc",
+                "02f2f2d4"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 4,
+            "alvos_ids": [
+                "91d184bc",
+                "017db0aa"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 5,
+            "alvos_ids": [
+                "725383ed"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 6,
+            "alvos_ids": [
+                "0f9dcf05"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 7,
+            "alvos_ids": [
+                "4213f209",
+                "e751b257"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 8,
+            "alvos_ids": [
+                "87b8e72b",
+                "c958f612"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 9,
+            "alvos_ids": [
+                "af015a3e"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 10,
+            "alvos_ids": [
+                "9b043cb8",
+                "0620e7e0",
+                "c97e855a",
+                "33d98513",
+                "c1f6b1e7",
+                "4bf2ffb4",
+                "36d74a85",
+                "34374275",
+                "46386b56",
+                "d3813cb9",
+                "069a43f2",
+                "4c71a83b"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 11,
+            "alvos_ids": [
+                "898137d5"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 12,
+            "alvos_ids": [
+                "34485af0",
+                "01372a83"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 13,
+            "alvos_ids": [
+                "df35779e"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 14,
+            "alvos_ids": [
+                "cdc80f01"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 15,
+            "alvos_ids": [
+                "a3c5b19b",
+                "007a241b",
+                "90ad7fcf"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 16,
+            "alvos_ids": [
+                "cd03d9ba"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 17,
+            "alvos_ids": [
+                "9502efc9",
+                "abb8b6c6"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 18,
+            "alvos_ids": [
+                "ce4d2a4e"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 19,
+            "alvos_ids": [
+                "5bbebd8f",
+                "c1060fa5"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 20,
+            "alvos_ids": [
+                "548332ca"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 21,
+            "alvos_ids": [
+                "31ae7999",
+                "af0a522f"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 22,
+            "alvos_ids": [
+                "b84afbd9"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 23,
+            "alvos_ids": [
+                "a646b234"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 24,
+            "alvos_ids": [
+                "49eb8b4f"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 25,
+            "alvos_ids": [
+                "6ae0c7a4",
+                "c7515d9b",
+                "2b64ebd7",
+                "8ff26039",
+                "6f94c0ec",
+                "12c1bc99",
+                "8e09bdb6",
+                "1c980f14",
+                "c603eed7",
+                "1e1ceae0",
+                "80b23492",
+                "fa92c8d5"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 26,
+            "alvos_ids": [
+                "2f3f9fcb"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 27,
+            "alvos_ids": [
+                "bd334263"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 28,
+            "alvos_ids": [
+                "7beaef9e",
+                "8278b7ba",
+                "36539de5",
+                "e6885a4d",
+                "f26b8982"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 29,
+            "alvos_ids": [
+                "bffb91fc",
+                "bba821e6",
+                "d602a712"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 30,
+            "alvos_ids": [
+                "460b2157",
+                "86c6faa8"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 31,
+            "alvos_ids": [
+                "40a5bc2d",
+                "318b3b5c"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 32,
+            "alvos_ids": [
+                "3129ba22",
+                "452e842b"
+            ],
+            "dest_fornecedor_id": null
         }
     ]
 }
