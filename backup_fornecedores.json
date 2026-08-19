@@ -1,0 +1,200 @@
+{
+    "sessao_atual": {},
+    "historico": [
+        {
+            "tipo": "P",
+            "grupo_idx": 0,
+            "alvos_ids": [
+                "e452c5a0"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 1,
+            "alvos_ids": [
+                "7ba831be"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 2,
+            "alvos_ids": [
+                "19c6465e"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 3,
+            "alvos_ids": [
+                "e549c1ce"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 4,
+            "alvos_ids": [
+                "5013cf13",
+                "fa8d5168"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 5,
+            "alvos_ids": [
+                "69803b27"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 6,
+            "alvos_ids": [
+                "987fa304"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 7,
+            "alvos_ids": [
+                "264bbf65"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 8,
+            "alvos_ids": [
+                "85dad9fc"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 9,
+            "alvos_ids": [
+                "496abd05",
+                "aacc8602"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 10,
+            "alvos_ids": [
+                "ad8c23f2"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 11,
+            "alvos_ids": [
+                "e7cce281"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 12,
+            "alvos_ids": [
+                "e6d6ba83"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 13,
+            "alvos_ids": [
+                "06d33bc5"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 14,
+            "alvos_ids": [
+                "1303b13d"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 15,
+            "alvos_ids": [
+                "50f4786a"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 16,
+            "alvos_ids": [
+                "f98ec7c6"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 17,
+            "alvos_ids": [
+                "d980a910",
+                "838747ef"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 18,
+            "alvos_ids": [
+                "c859fab4"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 19,
+            "alvos_ids": [
+                "dc1dc172"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 20,
+            "alvos_ids": [
+                "7cec6ee5"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 21,
+            "alvos_ids": [
+                "dda2a245"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 22,
+            "alvos_ids": [
+                "fbabee71"
+            ],
+            "dest_fornecedor_id": null
+        },
+        {
+            "tipo": "P",
+            "grupo_idx": 23,
+            "alvos_ids": [
+                "053eed47"
+            ],
+            "dest_fornecedor_id": null
+        }
+    ]
+}
