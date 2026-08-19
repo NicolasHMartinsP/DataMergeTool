@@ -205,14 +205,36 @@ class ExcelService:
         return falhas
 
     def salvar_planilhas(self):
-        """ BRAÇO LOCAL: Salva os arquivos físicos atualizados """
-        salvos = []
-        for arquivo, wb in self.workbooks.items():
-            pasta, nome_arquivo = os.path.split(arquivo)
-            nome_salvo = os.path.join(pasta, f"ATUALIZADO_{nome_arquivo}")
-            wb.save(nome_salvo)
-            salvos.append(nome_salvo)
-        return salvos
+        import os
+        arquivos_salvos = []
+        
+        # 1. Garante que as pastas de destino existem (Medida de Segurança)
+        pasta_mov_atualizadas = os.path.join("saida", "Movimentações Atualizadas")
+        pasta_contas_atualizadas = os.path.join("saida", "Contas Atualizadas")
+        
+        os.makedirs(pasta_mov_atualizadas, exist_ok=True)
+        os.makedirs(pasta_contas_atualizadas, exist_ok=True)
+
+        # 2. Roteamento Inteligente dos Arquivos
+        for caminho_original, wb in self.workbooks.items():
+            nome_arquivo = os.path.basename(caminho_original)
+            caminho_lower = caminho_original.lower()
+            
+            # Removemos o prefixo "ATUALIZADO_" já que agora estão em pastas separadas, 
+            # mantendo o nome original limpo e pronto para uso.
+            if nome_arquivo.startswith("ATUALIZADO_"):
+                nome_arquivo = nome_arquivo.replace("ATUALIZADO_", "")
+            
+            # Avalia de onde o arquivo veio para mandar pra pasta certa
+            if "contas a pagar" in caminho_lower or "contas" in caminho_lower:
+                novo_caminho = os.path.join(pasta_contas_atualizadas, nome_arquivo)
+            else:
+                novo_caminho = os.path.join(pasta_mov_atualizadas, nome_arquivo)
+                
+            wb.save(novo_caminho)
+            arquivos_salvos.append(novo_caminho)
+            
+        return arquivos_salvos
 
     def salvar_base_fornecedores_limpa(self, ids_remover):
         """ NUVEM: Apenas exibe o aviso, já que o usuário não quer modificar a nuvem """

@@ -15,6 +15,7 @@ RELATORIO_EXCLUSAO.txt
 backup_sessao.json
 relatorio_exclusao.txt
 RELATORIO_ORFAOS.txt
+# Pastas Sensiveis
 movimentacoes/
 saida/
 contas/

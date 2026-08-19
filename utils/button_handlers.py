@@ -71,11 +71,13 @@ class ButtonHandlers:
                 elif acao == 'S':
                     if self.ui.exibir_confirmacao_migracao(alvos, grupo.mestre.id, grupo.mestre.nome, grupo.mestre, self.modo_nome):
                         self.state.aplicar_migracao_em_lote(alvos, grupo.mestre.id, grupo.mestre, self.migration, 'S', idx_grupo)
+                        self.state.atualizar_pendencias_grupos(self.grupos_duplicados) # ATUALIZA A TELA
                         marcados.clear()
                 elif acao == 'T':
                     self._trazer_para_grupo(grupo, marcados)
                 elif acao == 'I':
                     self._substituir_por_outro(alvos, grupo, marcados, idx_grupo)
+                    self.state.atualizar_pendencias_grupos(self.grupos_duplicados) # ATUALIZA A TELA
 
             if voltar_pro_hub: break
             if len(grupo.itens_pendentes) == 0: idx_grupo += 1
@@ -314,6 +316,7 @@ class ButtonHandlers:
         if self.state.historico_acoes:
             u_acao = self.state.historico_acoes.pop()
             self.state.reverter_acao(u_acao, self.migration)
+            self.state.atualizar_pendencias_grupos(self.grupos_duplicados) # ATUALIZA A TELA
             self.ui.limpar_tela()
             utils_console.sucesso("\nÚltima ação desfeita com sucesso!")
             time.sleep(1)
@@ -323,31 +326,40 @@ class ButtonHandlers:
     # ==========================================
     def acao_exportar_excel(self):
         todas_migracoes = self.migration.obter_migracoes()
-        if todas_migracoes:
+        
+        # AGORA O BOTÃO "E" OLHA PARA OS DOIS LUGARES!
+        if todas_migracoes or hasattr(self.cross, 'total_resolvidos') and self.cross.total_resolvidos > 0:
             self.ui.limpar_tela()
             self.ui.console.print(Panel(f"[bold bright_green]🚀 ATUALIZANDO EXCEL LOCAIS E GERANDO RELATÓRIO ({self.modo_nome}S)[/bold bright_green]", expand=False))
-            print(f"Buscando e substituindo {len(todas_migracoes)} IDs nas abas permitidas das planilhas de movimentações...")
             
-            self.excel.atualizar_ids(todas_migracoes)
-            falhas = self.excel.validar_migracoes(todas_migracoes)
+            if todas_migracoes:
+                print(f"Buscando e substituindo {len(todas_migracoes)} IDs nas abas permitidas...")
+                self.excel.atualizar_ids(todas_migracoes)
+                falhas = self.excel.validar_migracoes(todas_migracoes)
+            else:
+                falhas = []
+                print(f"Salvando {self.cross.total_resolvidos} quebras de notas seladas pelo Sincronizador...")
+                
             arquivos_salvos = self.excel.salvar_planilhas()
             
-            with open("RELATORIO_EXCLUSAO.txt", "w", encoding="utf-8") as f:
-                f.write(f"=== {self.modo_nome}S ATUALIZADOS ===\n")
-                f.write("As linhas contendo estes IDs foram atualizadas com sucesso nos arquivos físicos.\n")
-                f.write("ATENÇÃO: Como a base 'The Best Almeida' agora fica na nuvem, lembre-se de deletar estes IDs inativos no Google Sheets manualmente:\n\n")
-                for m in todas_migracoes:
-                    f.write(f"ID INATIVO A DELETAR: {m.origem}  ---> (As linhas dele agora pertencem ao ID: {m.destino})\n")
+            if todas_migracoes:
+                with open("RELATORIO_EXCLUSAO.txt", "w", encoding="utf-8") as f:
+                    f.write(f"=== {self.modo_nome}S ATUALIZADOS ===\n")
+                    f.write("As linhas contendo estes IDs foram atualizadas com sucesso nos arquivos físicos.\n")
+                    f.write("ATENÇÃO: Como a base The Best Almeida fica na nuvem, lembre-se de deletar estes IDs manualmente:\n\n")
+                    for m in todas_migracoes:
+                        f.write(f"ID INATIVO A DELETAR: {m.origem}  ---> (Agora pertencem ao ID: {m.destino})\n")
+                
+                print(f"\n>> Relatório gerado: RELATORIO_EXCLUSAO.txt")
+                self.ui.console.print(Panel("[bold bright_yellow]ATENÇÃO PARA LIMPEZA DA BASE OFICIAL:[/bold bright_yellow]\nUse o RELATORIO_EXCLUSAO.txt como guia para deletar as linhas antigas da nuvem.", border_style="bright_yellow"))
             
-            print(f"\n>> Relatório gerado: RELATORIO_EXCLUSAO.txt")
-            self.ui.console.print(Panel("[bold bright_yellow]ATENÇÃO PARA LIMPEZA DA BASE OFICIAL:[/bold bright_yellow]\nComo o Data Merge agora está conectado no Google Sheets em modo 'Apenas Leitura', ele não exclui os IDs duplicados da sua nuvem. Abra a planilha do Google e delete as linhas antigas manualmente usando o arquivo RELATORIO_EXCLUSAO.txt como guia.", border_style="bright_yellow"))
             self.report.mostrar_validacao(falhas, arquivos_salvos, None)
             sys.exit()
         else:
             self.ui.limpar_tela()
             utils_console.sucesso("\nNenhuma alteração na fila. Os arquivos do Excel permanecem intocados.")
             time.sleep(2)
-
+            
     # ==========================================
     # BOTÃO Q: SALVAR E SAIR
     # ==========================================
@@ -385,7 +397,8 @@ class ButtonHandlers:
             u_acao = self.state.historico_acoes.pop()
             self.state.reverter_acao(u_acao, self.migration)
             acoes_desfeitas += 1
-            
+
+        self.state.atualizar_pendencias_grupos(self.grupos_duplicados)
         utils_console.sucesso(f"\nRollback concluído! {acoes_desfeitas} ação(ões) desfeita(s).")
         time.sleep(2)
         return target_idx
@@ -393,6 +406,7 @@ class ButtonHandlers:
     def _desfazer_acao_local(self, idx_atual):
         u_acao = self.state.historico_acoes.pop()
         self.state.reverter_acao(u_acao, self.migration)
+        self.state.atualizar_pendencias_grupos(self.grupos_duplicados)
         utils_console.sucesso("\nDesfeito com sucesso!")
         time.sleep(1)
         if isinstance(u_acao['grupo_idx'], int) and u_acao['grupo_idx'] < idx_atual:
