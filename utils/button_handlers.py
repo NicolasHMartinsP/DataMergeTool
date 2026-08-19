@@ -176,7 +176,7 @@ class ButtonHandlers:
             return
         
         self.ui.paginar_inativos(inativos, self.modo_nome)
-        
+
     # ==========================================
     # BOTÃO 6: SINCRONIZADOR CRUZADO
     # ==========================================
@@ -218,72 +218,94 @@ class ButtonHandlers:
                         f_out.write("-" * 50 + "\n")
                 utils_console.sucesso("\nRelatório exportado com sucesso: RELATORIO_QUEBRAS.txt")
                 time.sleep(2)
+
             elif acao == 'RESOLVER':
-                inicio = pagina_atual * tamanho_pagina
-                fim = inicio + tamanho_pagina
-                conflitos_pagina = conflitos[inicio:fim]
+                # --- FLUXO MODO MICRO PERSISTENTE ---
+                while True:
+                    # Recalcula as páginas dinamicamente para não bugar a lista quando os itens sumirem
+                    tamanho_pagina = 10
+                    total_paginas = max(1, (len(conflitos) + tamanho_pagina - 1) // tamanho_pagina)
+                    if pagina_atual >= total_paginas: 
+                        pagina_atual = max(0, total_paginas - 1)
+                    
+                    inicio = pagina_atual * tamanho_pagina
+                    conflitos_pagina = conflitos[inicio:inicio + tamanho_pagina]
 
-                for conflito in conflitos_pagina:
-                    status_resolucao = self._resolver_conflito_individual(conflito)
-                    if status_resolucao == 'ABORTAR':
-                        break
-                    elif status_resolucao == 'RESOLVIDO':
-                        conflitos.remove(conflito)
+                    if not conflitos_pagina:
+                        break # Se zerou tudo nesta visão, volta pro Macro automaticamente
 
-    def _resolver_conflito_individual(self, conflito):
-        self.ui.limpar_tela()
-        titulo = f"[bold bright_blue]🔗 RESOLUÇÃO: NOTA Nº {conflito['id_nota']}[/bold bright_blue]"
-        self.ui.console.print(Panel(titulo, border_style="bright_blue"))
-        
-        self.ui.desenhar_tabela_cruzada(conflito)
-        
-        if conflito['sugestao_id']:
-            self.ui.console.print(Panel(f"[bold bright_green]🪄 RESOLUÇÃO AUTOMÁTICA DISPONÍVEL:[/bold bright_green]\nO sistema identificou o ID Oficial [bold white]{conflito['sugestao_id']}[/bold white] ({escape(conflito['sugestao_nome'])}) em um dos lados.\nDeseja espelhar este ID para selar a quebra?", border_style="bright_green"))
-            atalhos = "[bold bright_green][ENTER][/bold bright_green] Aceitar Sugestão | [bold bright_cyan][I][/bold bright_cyan] Pesquisar Outro ID | [bold white][P][/bold white] Pular | [bold red][Q][/bold red] Abortar Grupo"
-        else:
-            self.ui.console.print(Panel("[bold bright_red]🚨 CAOS TOTAL (NENHUM OFICIAL ENCONTRADO)[/bold bright_red]\nOs dois lados estão inconsistentes (Fantasmas/Vazios). Você precisa intervir manualmente e informar o ID verdadeiro.", border_style="red"))
-            atalhos = "[bold bright_cyan][I][/bold bright_cyan] Pesquisar Oficial Manualmente | [bold white][P][/bold white] Pular | [bold red][Q][/bold red] Abortar Grupo"
-            
-        self.ui.console.print(Align.center(atalhos))
-        
-        while True:
-            t = msvcrt.getch().upper()
-            if t == b'\r' and conflito['sugestao_id']:
-                self.cross.selar_paz(conflito, conflito['sugestao_id'])
-                utils_console.sucesso(f"Paz selada! O ID {conflito['sugestao_id']} foi injetado nos dois arquivos.")
-                time.sleep(1)
-                return 'RESOLVIDO'
-            elif t == b'P':
-                return 'PULADO'
-            elif t == b'Q':
-                return 'ABORTAR'
-            elif t == b'I':
-                self.ui.limpar_tela()
-                self.ui.console.print(Panel("[bold bright_cyan]PESQUISAR ID DEFINITIVO PARA A NOTA[/bold bright_cyan]", border_style="bright_cyan"))
-                self.ui.console.print("Digite o ID exato ou Nome (ENTER p/ cancelar): ", end="")
-                busca = input().strip()
-                if busca:
-                    resultados = self.duplicate.buscar_por_nome_parcial(busca, self.fornecedores)
-                    if resultados:
-                        escolha = self.ui.menu_pesquisa_nativo(resultados, busca, self.state.sessao_atual, self.state.ids_processados)
-                        if escolha and escolha != "EXTERNO":
-                            self.cross.selar_paz(conflito, escolha.id)
-                            utils_console.sucesso(f"Resolvido! ID {escolha.id} aplicado em ambos os arquivos.")
-                            time.sleep(1)
-                            return 'RESOLVIDO'
-                    else:
-                        exato = self.duplicate.buscar_por_id(busca, self.fornecedores)
-                        if exato:
-                            self.cross.selar_paz(conflito, exato.id)
-                            utils_console.sucesso(f"Resolvido! ID {exato.id} aplicado em ambos os arquivos.")
-                            time.sleep(1)
-                            return 'RESOLVIDO'
+                    acao_lote, alvos = self.ui.menu_resolucao_lote(conflitos_pagina, len(conflitos))
+                    
+                    if acao_lote == 'Q':
+                        break # Sai do modo Micro por vontade do usuário
+                        
+                    if not alvos:
+                        continue 
+                        
+                    sucesso_count = 0
+                    resolvidos_ids = set()
+                    
+                    if acao_lote == 'I':
+                        self.ui.limpar_tela()
+                        self.ui.console.print(Panel("[bold bright_cyan]PESQUISAR ID DEFINITIVO PARA O LOTE[/bold bright_cyan]", border_style="bright_cyan"))
+                        self.ui.console.print("Digite o ID exato ou Nome (ENTER p/ cancelar): ", end="")
+                        busca = input().strip()
+                        if not busca: continue
+                        
+                        id_escolhido = None
+                        resultados = self.duplicate.buscar_por_nome_parcial(busca, self.fornecedores)
+                        if resultados:
+                            escolha = self.ui.menu_pesquisa_nativo(resultados, busca, self.state.sessao_atual, self.state.ids_processados)
+                            if escolha and escolha != "EXTERNO":
+                                id_escolhido = escolha.id
+                            elif escolha == "EXTERNO":
+                                id_escolhido = busca
                         else:
-                            self.ui.console.print("\n[bold red]Nenhum ID encontrado. Tente novamente.[/bold red]")
-                            time.sleep(1)
-                            break 
-                else:
-                    break
+                            exato = self.duplicate.buscar_por_id(busca, self.fornecedores)
+                            if exato: id_escolhido = exato.id
+                            else:
+                                self.ui.console.print("\n[bold red]Nenhum ID encontrado.[/bold red]")
+                                time.sleep(1)
+                                continue
+                                
+                        if id_escolhido:
+                            for c in alvos:
+                                self.cross.selar_paz(c, id_escolhido)
+                                resolvidos_ids.add(c['id_nota'])
+                                sucesso_count += 1
+                                
+                    elif acao_lote == 'S':
+                        for c in alvos:
+                            if c['sugestao_id']:
+                                self.cross.selar_paz(c, c['sugestao_id'])
+                                resolvidos_ids.add(c['id_nota'])
+                                sucesso_count += 1
+                    
+                    elif acao_lote == 'C':
+                        for c in alvos:
+                            val = c['conta']['val']
+                            if val:
+                                self.cross.selar_paz(c, val)
+                                resolvidos_ids.add(c['id_nota'])
+                                sucesso_count += 1
+                                
+                    elif acao_lote == 'N':
+                        for c in alvos:
+                            val = c['nota']['val']
+                            if val:
+                                self.cross.selar_paz(c, val)
+                                resolvidos_ids.add(c['id_nota'])
+                                sucesso_count += 1
+                                
+                    if sucesso_count > 0:
+                        # ATUALIZA A LISTA OFICIAL (Isso resolve a contagem congelada!)
+                        conflitos = [c for c in conflitos if c['id_nota'] not in resolvidos_ids]
+                        
+                        utils_console.sucesso(f"\n{sucesso_count} nota(s) atualizada(s) e removida(s) com sucesso!")
+                        time.sleep(1)
+                        
+                    if not conflitos:
+                        break # Volta para a tela inicial se limpar 100% dos conflitos
 
     # ==========================================
     # BOTÃO Z: DESFAZER

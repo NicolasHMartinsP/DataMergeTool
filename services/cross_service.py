@@ -76,7 +76,9 @@ class CrossService:
             
             id_c = c_conta['val'].lower()
             id_n = c_nota['val'].lower()
-            
+
+            if id_c == "" and id_n == "":
+                continue
             # Se estão iguais e existem no The Best Almeida, está tudo 100% íntegro!
             if id_c == id_n and id_c in master_ids: 
                 continue

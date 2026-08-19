@@ -602,3 +602,75 @@ class UIView:
             blocos.append("\n".join(linhas_loja))
                 
         return "\n\n".join(blocos)
+    
+    def menu_resolucao_lote(self, conflitos_pagina, total_restantes):
+        self.limpar_tela()
+        cursor = 0
+        marcados = set()
+
+        def render_layout(pos, marc):
+            panel_info = Panel(f"[bold bright_blue]🔗 MODO DE RESOLUÇÃO EM LOTE[/bold bright_blue]\nFaltam [bold bright_yellow]{total_restantes}[/bold bright_yellow] notas pendentes. As resolvidas puxam as próximas da fila automaticamente.", border_style="bright_blue")
+            
+            table = Table(show_header=True, header_style="bold bright_magenta", box=box.ROUNDED, show_lines=True)
+            table.add_column("Sel", justify="center", vertical="middle")
+            table.add_column("Nº Nota", style="bold bright_yellow", justify="center")
+            table.add_column("Contas a Pagar", style="white")
+            table.add_column("Notas de Compra", style="white")
+            table.add_column("Sugestão Automática", style="bold bright_green")
+            
+            for i, c in enumerate(conflitos_pagina):
+                is_selected = c['id_nota'] in marc
+                is_cursor = i == pos
+                
+                sel_char = "[bold bright_green][ X ][/]" if is_selected else "[dim][   ][/]"
+                cursor_char = "[bold bright_cyan]➜[/] " if is_cursor else "  "
+                row_style = "bold bright_white" if is_cursor else "white"
+                if is_selected and not is_cursor: row_style = "bright_green"
+                
+                st_c_format = f"{escape(c['conta']['val'] or 'VAZIO')} ({c['st_c']})"
+                st_n_format = f"{escape(c['nota']['val'] or 'VAZIO')} ({c['st_n']})"
+                sugestao = escape(c['sugestao_id']) if c['sugestao_id'] else "Manual"
+                
+                table.add_row(f"{cursor_char}{sel_char}", f"[{row_style}]{c['id_nota']}[/]", f"[{row_style}]{st_c_format}[/]", f"[{row_style}]{st_n_format}[/]", f"[{row_style}]{sugestao}[/]")
+                
+            qtd = len(marc)
+            alvo_txt = f"nas {qtd} notas marcadas" if qtd > 0 else "em TODAS da tela"
+            
+            atalhos = (
+                f"[bold bright_white]ATALHOS (Aplicará {alvo_txt}):[/bold bright_white]\n\n"
+                f" [bold bright_green][S][/bold bright_green] Aplicar a Sugestão Automática (onde houver)\n"
+                f" [bold bright_cyan][C][/bold bright_cyan] Forçar IDs usando o lado do [bold]Contas a Pagar[/bold]\n"
+                f" [bold bright_cyan][N][/bold bright_cyan] Forçar IDs usando o lado das [bold]Notas de Compra[/bold]\n"
+                f" [bold bright_magenta][I][/bold bright_magenta] Pesquisar e forçar um ID externo/manual para todas\n\n"
+                f" [bold red][Q][/bold red] Voltar para a Visão Macro"
+            )
+            
+            return Group(
+                panel_info,
+                Text(" NAVEGAÇÃO: Setas (Cima/Baixo) | SELEÇÃO (Marcar): [ENTER]\n", style="dim"),
+                table,
+                Panel(atalhos, border_style="dim white")
+            )
+
+        with Live(render_layout(cursor, marcados), console=self.console, auto_refresh=False) as live:
+            while True:
+                if cursor >= len(conflitos_pagina):
+                    cursor = max(0, len(conflitos_pagina) - 1)
+                    live.update(render_layout(cursor, marcados), refresh=True)
+
+                tecla = msvcrt.getch()
+                if tecla in (b'\xe0', b'\x00'):
+                    seta = msvcrt.getch()
+                    if seta == b'H': cursor = max(0, cursor - 1)
+                    elif seta == b'P': cursor = min(len(conflitos_pagina) - 1, cursor + 1)
+                    live.update(render_layout(cursor, marcados), refresh=True)
+                elif tecla == b'\r':
+                    if conflitos_pagina:
+                        item_id = conflitos_pagina[cursor]['id_nota']
+                        if item_id in marcados: marcados.remove(item_id)
+                        else: marcados.add(item_id)
+                        live.update(render_layout(cursor, marcados), refresh=True)
+                elif tecla.upper() in [b'S', b'C', b'N', b'I', b'Q']:
+                    alvos = [c for c in conflitos_pagina if c['id_nota'] in marcados] if marcados else conflitos_pagina.copy()
+                    return tecla.upper().decode('utf-8'), alvos
+                elif tecla == b'\x03': raise KeyboardInterrupt
