@@ -120,32 +120,43 @@ class ButtonHandlers:
                 self.state.aplicar_migracao_em_lote([origem], dest_id, dest_forn, self.migration, 'M', 'MANUAL')
 
     # ==========================================
-    # BOTÃO 3: RAIO-X / PESQUISA
+    # BOTÃO 3: RAIO-X / PESQUISA (DINÂMICO E PADRONIZADO)
     # ==========================================
     def acao_raiox_pesquisa(self):
-        self.ui.limpar_tela()
-        self.ui.console.print(Panel(f"[bold bright_yellow]🔍 MODO DE PESQUISA (RAIO-X DE {self.modo_nome})[/bold bright_yellow]", border_style="bright_yellow"))
-        self.ui.console.print("[bold bright_white]Qual registro você deseja consultar nas planilhas?[/bold bright_white]")
-        self.ui.console.print("Digite o Nome ou ID (ENTER p/ cancelar): ", end="")
-        busca = input().strip()
-        if not busca: return
-        
-        resultados = self.duplicate.buscar_por_nome_parcial(busca, self.fornecedores)
-        alvo = None
-        
-        exato = self.duplicate.buscar_por_id(busca, self.fornecedores)
-        if exato:
-            alvo = exato
-        elif resultados:
-            escolha = self.ui.menu_pesquisa_nativo(resultados, busca, self.state.sessao_atual, self.state.ids_processados)
-            if escolha == "EXTERNO" or escolha is None: return
-            alvo = escolha
-        else:
-            self.ui.console.print(f"\n[bold red][AVISO][/bold red] Nada encontrado na base oficial com '{escape(busca)}'.")
-            time.sleep(2)
-            return
+        busca = ""
+        while True:
+            # Se não tem uma busca ativa, pede para o usuário digitar
+            if not busca:
+                self.ui.limpar_tela()
+                self.ui.console.print(Panel(f"[bold bright_yellow]🔍 MODO DE PESQUISA (RAIO-X DE {self.modo_nome})[/bold bright_yellow]", border_style="bright_yellow"))
+                self.ui.console.print("[bold bright_white]Qual registro você deseja consultar nas planilhas?[/bold bright_white]")
+                self.ui.console.print("Digite o Nome ou ID (ENTER vazio para Voltar ao Menu): ", end="")
+                busca = input().strip()
+                if not busca: return # Volta ao hub se der Enter vazio
             
-        self.ui.desenhar_tela_raiox(alvo)
+            resultados = self.duplicate.buscar_por_nome_parcial(busca, self.fornecedores)
+            exato = self.duplicate.buscar_por_id(busca, self.fornecedores)
+            
+            # Junta os resultados priorizando o idêntico no topo
+            lista_resultados = []
+            if exato: lista_resultados.append(exato)
+            if resultados:
+                for r in resultados:
+                    if r not in lista_resultados: lista_resultados.append(r)
+            
+            if not lista_resultados:
+                self.ui.console.print(f"\n[bold red][AVISO][/bold red] Nada encontrado na base oficial com '{escape(busca)}'.")
+                time.sleep(1.5)
+                busca = "" # Zera para ele cair no input inicial na próxima volta do loop
+                continue
+                
+            # Chama o novo painel dinâmico (Onde apenas passar o cursor já mostra o Raio-X)
+            acao = self.ui.menu_raiox_dinamico(lista_resultados, busca, self.modo_nome)
+            
+            if acao == 'ESC':
+                return # Mata o loop e volta pro Menu Principal
+            elif acao == 'I':
+                busca = "" # Zera a busca: O loop vai rodar de novo e pedir o próximo ID automaticamente!
 
     # ==========================================
     # BOTÃO 4: CAÇADOR DE ÓRFÃOS

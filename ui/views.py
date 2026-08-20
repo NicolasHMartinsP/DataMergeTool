@@ -343,33 +343,75 @@ class UIView:
             if t == b'\r': return True
             if t == b'\x1b': return False
 
-    def desenhar_tela_raiox(self, alvo):
-        titulo_box = f"[bold bright_yellow]🔍 RESULTADO DO RAIO-X[/bold bright_yellow]\n[bold white]ID:[/bold white] {alvo.id} | [bold white]NOME:[/bold white] {escape(alvo.nome)}"
-        self.console.print(Panel(titulo_box, border_style="bright_yellow"))
-        
-        if alvo.movimentacoes > 0:
-            t_raiox = Table(show_header=True, header_style="bold bright_yellow", box=box.ROUNDED, expand=True, show_lines=True)
-            t_raiox.add_column("🏪 Loja / Arquivo", style="bright_white", vertical="middle")
-            t_raiox.add_column("📑 Aba (Planilha)", style="bright_cyan", vertical="middle")
-            t_raiox.add_column("🏷️ Coluna", style="bright_yellow", vertical="middle")
-            t_raiox.add_column("📦 Quantidade", justify="right", style="bold bright_green", vertical="middle")
-            
-            resumo_raiox = {}
-            for loc_raw, qtd in alvo.movimentacoes_por_loja.items():
-                loja, aba, coluna = self._limpar_nome_loja(loc_raw)
-                chave = (loja, aba, coluna)
-                resumo_raiox[chave] = resumo_raiox.get(chave, 0) + qtd
+    def menu_raiox_dinamico(self, resultados, termo_busca, modo_nome):
+        self.limpar_tela()
+        cursor = 0
 
-            for (loja, aba, col), qtd in sorted(resumo_raiox.items()):
-                t_raiox.add_row(escape(loja), escape(aba), escape(col), str(qtd))
-                
-            self.console.print(t_raiox)
-            self.console.print(f"\n[dim white]Total: {alvo.movimentacoes} ocorrência(s) encontrada(s) no sistema.[/dim white]")
-        else:
-            self.console.print("\n[bold red]Este registro existe na sua base oficial, mas não foi encontrado nenhuma vez nas planilhas escaneadas.[/bold red]")
+        def render_layout(pos):
+            # Painel da Esquerda: Lista de Resultados
+            table_list = Table(show_header=True, header_style="bold bright_yellow", box=box.ROUNDED, show_lines=True)
+            table_list.add_column("Sel", justify="center", vertical="middle")
+            table_list.add_column("ID", style="bright_white", vertical="middle")
+            table_list.add_column("Nome", style="white", vertical="middle")
             
-        self.console.print("\n[bold bright_white]Pressione qualquer tecla para voltar ao Menu Principal...[/bold bright_white]")
-        msvcrt.getch()
+            for i, item in enumerate(resultados):
+                is_cursor = i == pos
+                cursor_char = "[bold bright_cyan]➜[/]" if is_cursor else "  "
+                row_style = "bold bright_white" if is_cursor else "dim white"
+                
+                table_list.add_row(
+                    cursor_char, 
+                    f"[{row_style}]{item.id}[/]", 
+                    f"[{row_style}]{escape(item.nome)}[/]"
+                )
+
+            # Painel da Direita: Raio-X Dinâmico (Atualiza sozinho)
+            alvo = resultados[pos]
+            if alvo.movimentacoes > 0:
+                t_raiox = Table(show_header=True, header_style="dim bright_cyan", box=box.SIMPLE_HEAD, expand=True)
+                t_raiox.add_column("Loja", style="bright_white")
+                t_raiox.add_column("Aba", style="bright_cyan")
+                t_raiox.add_column("Coluna", style="bright_yellow")
+                t_raiox.add_column("Qtd", justify="right", style="bold bright_green")
+                
+                resumo_raiox = {}
+                for loc_raw, qtd in alvo.movimentacoes_por_loja.items():
+                    loja, aba, coluna = self._limpar_nome_loja(loc_raw)
+                    chave = (loja, aba, coluna)
+                    resumo_raiox[chave] = resumo_raiox.get(chave, 0) + qtd
+
+                for (loja, aba, col), qtd in sorted(resumo_raiox.items()):
+                    t_raiox.add_row(escape(loja), escape(aba), escape(col), str(qtd))
+                    
+                panel_detalhes = Panel(t_raiox, title=f"[bold bright_cyan]🔎 Raio-X: {alvo.id} ({alvo.movimentacoes} itens)[/]", border_style="bright_cyan")
+            else:
+                panel_detalhes = Panel("\n\n[dim white]Nenhuma ocorrência encontrada nas planilhas.[/dim white]\n\n", title=f"[bold bright_cyan]🔎 Raio-X: {alvo.id}[/]", border_style="dim")
+
+            layout_duplo = Table.grid(expand=True)
+            layout_duplo.add_column(ratio=5)
+            layout_duplo.add_column(ratio=5)
+            layout_duplo.add_row(table_list, panel_detalhes)
+            
+            atalhos = "[bold bright_cyan][ I ][/bold bright_cyan] Pesquisar Outro ID | [bold red][ ESC ][/bold red] Voltar ao Menu Principal"
+            
+            return Group(
+                Panel(f"[bold bright_yellow]🔍 RESULTADOS PARA:[/bold bright_yellow] '{escape(termo_busca)}'", border_style="bright_yellow"),
+                Text(" NAVEGAÇÃO: Setas (Cima/Baixo)\n", style="dim"),
+                layout_duplo,
+                Align.center(atalhos)
+            )
+
+        with Live(render_layout(cursor), console=self.console, auto_refresh=False) as live:
+            while True:
+                tecla = msvcrt.getch()
+                if tecla in (b'\xe0', b'\x00'):
+                    seta = msvcrt.getch()
+                    if seta == b'H': cursor = max(0, cursor - 1)
+                    elif seta == b'P': cursor = min(len(resultados) - 1, cursor + 1)
+                    live.update(render_layout(cursor), refresh=True)
+                elif tecla.upper() == b'I': return 'I'
+                elif tecla == b'\x1b' or tecla == b'\x08': return 'ESC' # ESC e Backspace voltam ao menu
+                elif tecla == b'\x03': raise KeyboardInterrupt
 
     def paginar_orfaos(self, orfaos_ordenados, modo_nome):
         total_geral_linhas = sum(sum(locs.values()) for _, locs in orfaos_ordenados)
