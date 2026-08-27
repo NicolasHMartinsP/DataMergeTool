@@ -1,29 +1,45 @@
-# Ambientes Virtuais
+# Ambientes Virtuais (Virtual Environments)
 .venv/
 venv/
 env/
+.env
 
-# Cache e Binários
+# Cache e Binários (Cache and Binaries)
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
 
-# Arquivos de Estado e Log
-backup_sessao.json
-RELATORIO_EXCLUSAO.txt
-backup_sessao.json
-relatorio_exclusao.txt
-RELATORIO_ORFAOS.txt
-
-movimentacoes/
-saida/
-contas/
-# Planilhas/Documentos
-ATUALIZADO_*.xlsx
-MERGED_*.xlsx
-The Best Almeida*.xlsx
-*.pdf
+# Credenciais e Arquivos Sensíveis (Credentials and Sensitive Data)
+credentials.json
 Credentials.json
-config.py
-backup_fornecedores.json
+*credentials*.json
+client_secret*.json
+
+# Backups de Estado da Aplicação (State Manager Backups)
+backup_*.json
+*.bak
+*.tmp
+
+# Planilhas e Dados do Usuário (Excel Files and User Data)
+*.xlsx
+*.xls
+*.csv
+~$*.xlsx
+
+# Diretórios de Dados e Output (Data and Output Directories)
+saida/
+movimentacoes/
+contas/
+
+# Relatórios Gerados pelo Sistema (System Generated Reports)
+RELATORIO_*.txt
+relatorio_*.txt
+*.pdf
+*.log
+
+# IDEs e Ferramentas (IDEs and Tools)
+.vscode/
+.idea/
+.DS_Store
