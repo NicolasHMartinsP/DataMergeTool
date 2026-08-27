@@ -3,136 +3,130 @@ from collections import defaultdict
 
 class CrossService:
     def __init__(self):
-        self.total_resolvidos = 0
-        pass
+        self.resolved_count = 0
 
-    def escanear_integridade(self, workbooks, fornecedores_oficiais):
-        """ Varre os arquivos na memória e cruza as Notas com Contas a Pagar com segurança máxima """
-        master_ids = {str(f.id).strip().lower(): f for f in fornecedores_oficiais}
-        map_notas = defaultdict(lambda: {'contas': [], 'notas': []})
+    def scan_referential_integrity(self, workbooks, master_records):
+        """Scans physical files and cross-references Side A (e.g. Bills) with Side B (e.g. Invoices) ensuring integrity."""
+        master_ids = {str(f.id).strip().lower(): f for f in master_records}
+        transactions_map = defaultdict(lambda: {'bills': [], 'invoices': []})
         
-        # 1. VARREDURA BLINDADA (Regras Estritas)
-        for arquivo, wb in workbooks.items():
-            for aba_nome in wb.sheetnames:
-                aba = wb[aba_nome]
-                aba_upper = aba_nome.upper().strip()
+        bills_keywords = getattr(config, 'CROSS_BILLS_SHEET_KEYWORDS', [])
+        invoices_keywords = getattr(config, 'CROSS_INVOICES_SHEET_KEYWORDS', [])
+        
+        for file_path, wb in workbooks.items():
+            for sheet_name in wb.sheetnames:
+                sheet = wb[sheet_name]
+                sheet_upper = sheet_name.upper().strip()
                 
-                tipo_aba = None
-                col_link_name = ""
-                col_forn_name = "FORNECEDOR"
+                sheet_type = None
+                link_col_name = ""
+                entity_col_name = ""
                 
-                # Regras cravadas conforme a sua estrutura de colunas
-                if "CONTAS A PAGAR" in aba_upper:
-                    tipo_aba = 'CONTAS'
-                    col_link_name = "NOTA"
-                elif "NOTAS DE COMPRA" in aba_upper or "NOTAS DE COMPRAS" in aba_upper:
-                    tipo_aba = 'NOTAS'
-                    col_link_name = "ID"
-                elif "NOTAS" == aba_upper or "NOTAS " in aba_upper: 
-                    tipo_aba = 'NOTAS'
-                    col_link_name = "ID"
+                if any(kw.upper() in sheet_upper for kw in bills_keywords):
+                    sheet_type = 'BILLS'
+                    link_col_name = getattr(config, 'CROSS_BILLS_LINK_COLUMN', "NOTA").upper()
+                    entity_col_name = getattr(config, 'CROSS_BILLS_ENTITY_COLUMN', "FORNECEDOR").upper()
+                elif any(kw.upper() in sheet_upper for kw in invoices_keywords):
+                    sheet_type = 'INVOICES'
+                    link_col_name = getattr(config, 'CROSS_INVOICES_LINK_COLUMN', "ID").upper()
+                    entity_col_name = getattr(config, 'CROSS_INVOICES_ENTITY_COLUMN', "FORNECEDOR").upper()
                 else:
                     continue
                     
-                # Extrai a primeira linha (cabeçalhos)
-                header = [str(c.value).strip().upper() if c.value else "" for c in aba[1]]
+                header = [str(c.value).strip().upper() if c.value else "" for c in sheet[1]]
                 
-                col_link_idx = -1
-                col_forn_idx = -1
+                link_col_idx = -1
+                entity_col_idx = -1
                 
-                # MIRA LASER: Procura o nome EXATO, sem adivinhação
                 for i, h in enumerate(header):
-                    if h == col_link_name:
-                        col_link_idx = i + 1
-                    if h == col_forn_name:
-                        col_forn_idx = i + 1
+                    if h == link_col_name:
+                        link_col_idx = i + 1
+                    if h == entity_col_name:
+                        entity_col_idx = i + 1
                         
-                # Se não achou exato, desiste desta aba e não tenta inventar
-                if col_link_idx == -1 or col_forn_idx == -1:
+                if link_col_idx == -1 or entity_col_idx == -1:
                     continue
                     
-                # Extrai os dados linha por linha
-                for row in aba.iter_rows(min_row=2):
-                    cell_link = row[col_link_idx - 1]
-                    cell_forn = row[col_forn_idx - 1]
+                for row in sheet.iter_rows(min_row=2):
+                    link_cell = row[link_col_idx - 1]
+                    entity_cell = row[entity_col_idx - 1]
                     
-                    val_link = str(cell_link.value).strip() if cell_link.value is not None else ""
-                    if val_link.endswith(".0"): val_link = val_link[:-2]
-                    if not val_link or val_link.lower() == "none": continue
+                    val_link = str(link_cell.value).strip() if link_cell.value is not None else ""
+                    if val_link.endswith(".0"): 
+                        val_link = val_link[:-2]
+                    if not val_link or val_link.lower() == "none": 
+                        continue
                     
-                    val_forn = str(cell_forn.value).strip() if cell_forn.value is not None else ""
-                    if val_forn.endswith(".0"): val_forn = val_forn[:-2]
-                    if val_forn.lower() == "none": val_forn = ""
+                    val_entity = str(entity_cell.value).strip() if entity_cell.value is not None else ""
+                    if val_entity.endswith(".0"): 
+                        val_entity = val_entity[:-2]
+                    if val_entity.lower() == "none": 
+                        val_entity = ""
                     
-                    dado = {
-                        'arquivo': arquivo,
-                        'aba': aba_nome,
-                        'row': cell_forn.row,
-                        'val': val_forn,
-                        'cell': cell_forn
+                    data_entry = {
+                        'file': file_path,
+                        'sheet': sheet_name,
+                        'row': entity_cell.row,
+                        'val': val_entity,
+                        'cell': entity_cell
                     }
                     
-                    if tipo_aba == 'CONTAS':
-                        map_notas[val_link]['contas'].append(dado)
+                    if sheet_type == 'BILLS':
+                        transactions_map[val_link]['bills'].append(data_entry)
                     else:
-                        map_notas[val_link]['notas'].append(dado)
+                        transactions_map[val_link]['invoices'].append(data_entry)
                         
-        # 2. ANÁLISE DE DIVERGÊNCIAS
-        conflitos = []
-        for id_nota, dados in map_notas.items():
-            if not dados['contas'] or not dados['notas']: 
+        conflicts = []
+        for transaction_id, details in transactions_map.items():
+            if not details['bills'] or not details['invoices']: 
                 continue 
             
-            # SISTEMA ANTIBUG: Se o AppSheet gerou duas linhas pra mesma nota (uma vazia e uma preenchida), 
-            # o robô filtra as vazias e prioriza a preenchida para não te dar alarme falso.
-            contas_preenchidas = [c for c in dados['contas'] if c['val'] != ""]
-            c_conta = contas_preenchidas[0] if contas_preenchidas else dados['contas'][0]
+            filled_bills = [c for c in details['bills'] if c['val'] != ""]
+            primary_bill = filled_bills[0] if filled_bills else details['bills'][0]
             
-            notas_preenchidas = [n for n in dados['notas'] if n['val'] != ""]
-            c_nota = notas_preenchidas[0] if notas_preenchidas else dados['notas'][0]
+            filled_invoices = [n for n in details['invoices'] if n['val'] != ""]
+            primary_invoice = filled_invoices[0] if filled_invoices else details['invoices'][0]
             
-            id_c = c_conta['val'].lower()
-            id_n = c_nota['val'].lower()
+            id_bill = primary_bill['val'].lower()
+            id_invoice = primary_invoice['val'].lower()
             
-            # IGNORA LANÇAMENTOS DO SISTEMA (Vazios de ambos os lados)
-            if id_c == "" and id_n == "":
+            if id_bill == "" and id_invoice == "":
                 continue
             
-            # SE ESTÃO IGUAIS E SÃO OFICIAIS, ESTÁ 100% CORRETO E ELE PULA.
-            if id_c == id_n and id_c in master_ids: 
+            if id_bill == id_invoice and id_bill in master_ids: 
                 continue
             
             def get_status(val):
-                if not val: return "VAZIO"
-                if val in master_ids: return "OFICIAL"
-                return "FANTASMA"
+                if not val: return "EMPTY"
+                if val in master_ids: return "OFFICIAL"
+                return "ORPHAN"
                 
-            st_c = get_status(id_c)
-            st_n = get_status(id_n)
+            status_bill = get_status(id_bill)
+            status_invoice = get_status(id_invoice)
             
-            sugestao = None
-            nome_sugestao = ""
-            if st_c == "OFICIAL" and st_n != "OFICIAL": 
-                sugestao = c_conta['val']
-                nome_sugestao = master_ids[id_c].nome
-            elif st_n == "OFICIAL" and st_c != "OFICIAL":
-                sugestao = c_nota['val']
-                nome_sugestao = master_ids[id_n].nome
+            suggestion_id = None
+            suggestion_name = ""
+            if status_bill == "OFFICIAL" and status_invoice != "OFFICIAL": 
+                suggestion_id = primary_bill['val']
+                suggestion_name = master_ids[id_bill].name
+            elif status_invoice == "OFFICIAL" and status_bill != "OFFICIAL":
+                suggestion_id = primary_invoice['val']
+                suggestion_name = master_ids[id_invoice].name
                 
-            conflitos.append({
-                'id_nota': id_nota,
-                'conta': c_conta,
-                'nota': c_nota,
-                'st_c': st_c,
-                'st_n': st_n,
-                'sugestao_id': sugestao,
-                'sugestao_nome': nome_sugestao
+            conflicts.append({
+                'transaction_id': transaction_id,
+                'bill': primary_bill,
+                'invoice': primary_invoice,
+                'status_bill': status_bill,
+                'status_invoice': status_invoice,
+                'suggestion_id': suggestion_id,
+                'suggestion_name': suggestion_name
             })
             
-        return conflitos
+        return conflicts
 
-    def selar_paz(self, conflito, novo_id):
-        """ Atualiza a célula real na memória do Python """
-        conflito['conta']['cell'].value = novo_id
-        conflito['nota']['cell'].value = novo_id
-        self.total_resolvidos += 1
+    def apply_resolution(self, conflict, new_id: str):
+        """Updates the physical memory cell with the new resolved ID."""
+        conflict['bill']['cell'].value = new_id
+        conflict['invoice']['cell'].value = new_id
+        self.resolved_count += 1

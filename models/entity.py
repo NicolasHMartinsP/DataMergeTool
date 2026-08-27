@@ -2,12 +2,11 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict
 
 @dataclass
-class FornecedorEntity:
+class Entity:
     id: str
-    nome: str
-    contato: Optional[str] = None
+    name: str
+    contact: Optional[str] = None
     pix: Optional[str] = None
-    fornecedor_destino: Optional[str] = None
-    movimentacoes: int = 0
-    # Novo: guarda de qual loja veio cada movimentação
-    movimentacoes_por_loja: Dict[str, int] = field(default_factory=dict)
+    target_id: Optional[str] = None
+    transactions_count: int = 0
+    transactions_by_store: Dict[str, int] = field(default_factory=dict)

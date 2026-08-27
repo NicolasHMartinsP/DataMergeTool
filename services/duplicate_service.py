@@ -1,116 +1,93 @@
 import sys
 import os
-# Força o Python a enxergar a pasta raiz do projeto (onde está o config.py)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
 from difflib import SequenceMatcher
-
-class GrupoDuplicatas:
-    """ Objeto que empacota o Registro Mestre e suas duplicatas para a interface """
-    def __init__(self, mestre, duplicados, motivo):
-        self.mestre = mestre
-        self.duplicados = duplicados
-        self.itens_pendentes = duplicados.copy()
-        self.motivo = motivo
-        self.nome = mestre.nome
+from models.duplicate_group import DuplicateGroup
 
 class DuplicateService:
-    def __init__(self, modo):
-        self.modo = modo
+    def __init__(self, mode: int):
+        self.mode = mode
         
-        # Puxa dinamicamente o nível de rigor que você definiu no painel de controle
-        if self.modo == 1:
-            self.limiar = config.SIMILARIDADE_FORNECEDORES / 100.0
+        if self.mode == 1:
+            self.threshold = getattr(config, 'MODE_1_SIMILARITY_THRESHOLD', 85) / 100.0
         else:
-            self.limiar = config.SIMILARIDADE_PRODUTOS / 100.0
+            self.threshold = getattr(config, 'MODE_2_SIMILARITY_THRESHOLD', 90) / 100.0
 
-    def calcular_similaridade(self, str1, str2):
-        """ Retorna uma porcentagem (0.0 a 1.0) de quão idênticos são dois textos """
+    def calculate_similarity(self, str1: str, str2: str) -> float:
         if not str1 or not str2:
             return 0.0
-        # O SequenceMatcher faz o alinhamento de blocos de caracteres idênticos
         return SequenceMatcher(None, str1.lower(), str2.lower()).ratio()
         
-    def _limpar_texto(self, texto):
-        """ Remove espaços em branco nas pontas e deixa tudo maiúsculo para não falhar por Case Sensitivity """
-        return str(texto).strip().upper()
+    def _clean_text(self, text: str) -> str:
+        return str(text).strip().upper()
 
-    def encontrar_duplicados(self, registros, contagem):
-        """ 
-        O Cérebro da Operação Automática:
-        1. Injeta os dados da varredura nos registros
-        2. Ordena quem é o item mais importante (mestre)
-        3. Compara o mestre com o resto da lista para achar clones
+    def find_duplicates(self, records, transaction_counts):
         """
-        # Passo 1: Atualiza os registros oficiais com as ocorrências reais encontradas nas tabelas filhas
-        for reg in registros:
-            if reg.id in contagem:
-                reg.movimentacoes_por_loja = contagem[reg.id].copy()
-                reg.movimentacoes = sum(reg.movimentacoes_por_loja.values())
+        Identifies and groups duplicated records based on string similarity.
+        Prioritizes records with the highest transaction counts.
+        """
+        for reg in records:
+            if reg.id in transaction_counts:
+                reg.transactions_by_store = transaction_counts[reg.id].copy()
+                reg.transactions_count = sum(reg.transactions_by_store.values())
             else:
-                reg.movimentacoes = 0
-                reg.movimentacoes_por_loja = {}
+                reg.transactions_count = 0
+                reg.transactions_by_store = {}
 
-        grupos = []
-        processados = set()
+        groups = []
+        processed_ids = set()
         
-        # A lógica do "Mestre": O item que tiver MAIS notas lançadas ganha o título de oficial.
-        # Em caso de empate de notas, usa a ordem alfabética do nome para desempatar.
-        registros_ordenados = sorted(registros, key=lambda x: (x.movimentacoes, x.nome), reverse=True)
+        # Sort by most transactions first, then alphabetically
+        sorted_records = sorted(records, key=lambda x: (x.transactions_count, x.name), reverse=True)
         
-        # Passo 2: A Varredura Combinatória
-        for i, reg_mestre in enumerate(registros_ordenados):
-            if reg_mestre.id in processados:
+        for i, master_record in enumerate(sorted_records):
+            if master_record.id in processed_ids:
                 continue
                 
-            duplicados_grupo = []
-            nome_mestre_limpo = self._limpar_texto(reg_mestre.nome)
+            duplicate_group = []
+            clean_master_name = self._clean_text(master_record.name)
             
-            # Ignora anomalias sem nome, impedindo que o assistente tente agrupar vários itens vazios
-            if nome_mestre_limpo == "SEM NOME" or not nome_mestre_limpo:
+            if clean_master_name == "SEM NOME" or not clean_master_name:
                 continue
             
-            for reg_candidato in registros_ordenados[i+1:]:
-                if reg_candidato.id in processados:
+            for candidate_record in sorted_records[i+1:]:
+                if candidate_record.id in processed_ids:
                     continue
                     
-                nome_candidato_limpo = self._limpar_texto(reg_candidato.nome)
+                clean_candidate_name = self._clean_text(candidate_record.name)
                 
-                if nome_candidato_limpo == "SEM NOME" or not nome_candidato_limpo:
+                if clean_candidate_name == "SEM NOME" or not clean_candidate_name:
                     continue
                 
-                # Passo 3: O Teste de DNA
-                similaridade = self.calcular_similaridade(nome_mestre_limpo, nome_candidato_limpo)
+                similarity = self.calculate_similarity(clean_master_name, clean_candidate_name)
                 
-                # Se a similaridade for maior ou igual a régua do config.py (ex: 95% para produtos)
-                if similaridade >= self.limiar:
-                    duplicados_grupo.append(reg_candidato)
-                    processados.add(reg_candidato.id)
+                if similarity >= self.threshold:
+                    duplicate_group.append(candidate_record)
+                    processed_ids.add(candidate_record.id)
             
-            if duplicados_grupo:
-                processados.add(reg_mestre.id)
-                porcentagem_tela = int(self.limiar * 100)
-                motivo = f"Similaridade do Nome >= {porcentagem_tela}%"
+            if duplicate_group:
+                processed_ids.add(master_record.id)
+                similarity_percentage = int(self.threshold * 100)
+                reason = f"Name Similarity >= {similarity_percentage}%"
                 
-                grupo = GrupoDuplicatas(reg_mestre, duplicados_grupo, motivo)
-                grupos.append(grupo)
+                group = DuplicateGroup(name=master_record.name, master=master_record, duplicates=duplicate_group, reason=reason)
+                groups.append(group)
                 
-        return grupos
+        return groups
 
-    def buscar_por_id(self, busca_id, registros):
-        """ O motor de busca rápida exata acionado quando você digita um ID Manual """
-        busca_id = str(busca_id).strip()
-        for r in registros:
-            if str(r.id).strip() == busca_id:
+    def find_by_id(self, search_id: str, records):
+        search_id = str(search_id).strip()
+        for r in records:
+            if str(r.id).strip() == search_id:
                 return r
         return None
 
-    def buscar_por_nome_parcial(self, termo, registros):
-        """ O motor de busca flexível acionado quando você digita partes de um nome """
-        termo = str(termo).strip().lower()
-        resultados = []
-        for r in registros:
-            if termo in r.nome.lower() or termo in str(r.id).lower():
-                resultados.append(r)
-        return resultados
+    def search_by_partial_name(self, term: str, records):
+        term = str(term).strip().lower()
+        results = []
+        for r in records:
+            if term in r.name.lower() or term in str(r.id).lower():
+                results.append(r)
+        return results

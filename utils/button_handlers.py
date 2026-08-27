@@ -2,16 +2,11 @@ import time
 import sys
 import msvcrt
 from rich.panel import Panel
-from rich.table import Table
-from rich.align import Align
-from rich import box
 from rich.markup import escape
-
 from utils import console as utils_console
 
 class ButtonHandlers:
-    def __init__(self, ui_view, state_manager, excel_service, duplicate_service, migration_service, report_service, cross_service, fornecedores, contagem, grupos_duplicados, modo_nome):
-        # Injeção de Dependências (O Handler recebe todas as ferramentas que ele precisa para trabalhar)
+    def __init__(self, ui_view, state_manager, excel_service, duplicate_service, migration_service, report_service, cross_service, records, counts, duplicate_groups, mode_name):
         self.ui = ui_view 
         self.state = state_manager
         self.excel = excel_service
@@ -19,478 +14,367 @@ class ButtonHandlers:
         self.migration = migration_service
         self.report = report_service
         self.cross = cross_service
-        
-        # Dados em Memória
-        self.fornecedores = fornecedores
-        self.contagem = contagem
-        self.grupos_duplicados = grupos_duplicados
-        self.modo_nome = modo_nome
+        self.records = records
+        self.counts = counts
+        self.duplicate_groups = duplicate_groups
+        self.mode_name = mode_name
 
-    # ==========================================
-    # BOTÃO 1: ASSISTENTE AUTOMÁTICO
-    # ==========================================
-    def acao_assistente_automatico(self):
-        pendentes_auto = sum(1 for g in self.grupos_duplicados if len(g.itens_pendentes) > 0)
-        
-        if pendentes_auto == 0:
-            self.ui.limpar_tela()
-            utils_console.sucesso("\nNão há grupos automáticos pendentes.")
+    def handle_automatic_resolution(self):
+        pending = sum(1 for g in self.duplicate_groups if len(g.pending_items) > 0)
+        if pending == 0:
+            self.ui.clear_screen()
+            utils_console.print_success("Não há conflitos automáticos pendentes.")
             time.sleep(2)
             return
 
-        idx_grupo = 0
-        while idx_grupo < len(self.grupos_duplicados):
-            grupo = self.grupos_duplicados[idx_grupo]
-            if len(grupo.itens_pendentes) == 0:
-                idx_grupo += 1
+        group_idx = 0
+        while group_idx < len(self.duplicate_groups):
+            group = self.duplicate_groups[group_idx]
+            if len(group.pending_items) == 0:
+                group_idx += 1
                 continue
             
-            marcados = set()
-            voltar_pro_hub = False
+            marked = set()
+            return_to_hub = False
 
-            while len(grupo.itens_pendentes) > 0:
-                # O UI View vai cuidar de desenhar a tela, nós só recebemos a tecla que o usuário apertou
-                acao = self.ui.menu_interativo_nativo(grupo, grupo.itens_pendentes, marcados, idx_grupo + 1, len(self.grupos_duplicados), len(self.state.sessao_atual), len(self.state.historico_acoes) > 0)
+            while len(group.pending_items) > 0:
+                action = self.ui.interactive_menu(group, group.pending_items, marked, group_idx + 1, len(self.duplicate_groups), len(self.state.current_session), len(self.state.action_history) > 0)
                 
-                if acao == 'V':
-                    idx_grupo = self._retroceder_grupos()
+                if action == 'V':
+                    group_idx = self._rollback_groups()
                     break
-                elif acao == 'Z':
-                    if self._desfazer_acao_local(idx_grupo):
-                        break
+                elif action == 'Z':
+                    if self._undo_local_action(group_idx): break
                     else: continue
                 
-                alvos = [f for f in grupo.itens_pendentes if f.id in marcados] if marcados else grupo.itens_pendentes.copy()
+                targets = [f for f in group.pending_items if f.id in marked] if marked else group.pending_items.copy()
 
-                if acao == 'Q':
-                    voltar_pro_hub = True
+                if action == 'Q':
+                    return_to_hub = True
                     break
-                elif acao == 'P':
-                    self.state.aplicar_pulo_em_lote(alvos, idx_grupo)
-                    marcados.clear()
-                elif acao == 'S':
-                    if self.ui.exibir_confirmacao_migracao(alvos, grupo.mestre.id, grupo.mestre.nome, grupo.mestre, self.modo_nome):
-                        self.state.aplicar_migracao_em_lote(alvos, grupo.mestre.id, grupo.mestre, self.migration, 'S', idx_grupo)
-                        self.state.atualizar_pendencias_grupos(self.grupos_duplicados) # ATUALIZA A TELA
-                        marcados.clear()
-                elif acao == 'T':
-                    self._trazer_para_grupo(grupo, marcados)
-                elif acao == 'I':
-                    self._substituir_por_outro(alvos, grupo, marcados, idx_grupo)
-                    self.state.atualizar_pendencias_grupos(self.grupos_duplicados) # ATUALIZA A TELA
+                elif action == 'P':
+                    self.state.apply_batch_skip(targets, group_idx)
+                    marked.clear()
+                elif action == 'S':
+                    if self.ui.confirm_migration(targets, group.master.id, group.master.name, group.master, self.mode_name):
+                        self.state.apply_batch_migration(targets, group.master.id, group.master, self.migration, 'S', group_idx)
+                        self.state.update_group_pending_items(self.duplicate_groups)
+                        marked.clear()
+                elif action == 'T':
+                    self._bring_to_group(group, marked)
+                elif action == 'I':
+                    self._substitute_with_another(targets, group, marked, group_idx)
+                    self.state.update_group_pending_items(self.duplicate_groups)
 
-            if voltar_pro_hub: break
-            if len(grupo.itens_pendentes) == 0: idx_grupo += 1
+            if return_to_hub: break
+            if len(group.pending_items) == 0: group_idx += 1
 
-    # ==========================================
-    # BOTÃO 2: SUBSTITUIÇÃO MANUAL (De -> Para)
-    # ==========================================
-    def acao_substituicao_manual(self):
-        self.ui.limpar_tela()
-        self.ui.console.print(Panel("[bold bright_cyan]SUBSTITUIÇÃO MANUAL LIVRE (DE ➜ PARA)[/bold bright_cyan]", border_style="bright_cyan"))
-        self.ui.console.print("[bold bright_white]PASSO 1: Qual ID Antigo será removido das planilhas? (Origem)[/bold bright_white]")
-        self.ui.console.print("Digite o Nome ou ID (ENTER p/ cancelar): ", end="")
-        busca_origem = input().strip()
-        if not busca_origem: return
+    def handle_manual_substitution(self):
+        self.ui.clear_screen()
+        self.ui.console.print(Panel("[bold bright_cyan]SUBSTITUIÇÃO MANUAL LIVRE[/bold bright_cyan]", border_style="bright_cyan"))
+        self.ui.console.print("Qual ID Antigo será removido das planilhas? (Origem)\nDigite o Nome ou ID (ENTER p/ cancelar): ", end="")
+        search_origin = input().strip()
+        if not search_origin: return
         
-        resultados_orig = self.duplicate.buscar_por_nome_parcial(busca_origem, self.fornecedores)
-        if not resultados_orig: return
+        results_orig = self.duplicate.search_by_partial_name(search_origin, self.records)
+        if not results_orig: return
             
-        origem = self.ui.menu_pesquisa_nativo(resultados_orig, busca_origem, self.state.sessao_atual, self.state.ids_processados)
-        if origem == "EXTERNO" or origem is None: return
+        origin = self.ui.search_menu(results_orig, search_origin, self.state.current_session, self.state.processed_ids)
+        if origin == "EXTERNO" or origin is None: return
         
-        if origem.id in self.state.ids_processados:
-            self.ui.console.print("\n[bold bright_yellow][AVISO][/bold bright_yellow] Este ID já foi processado nesta sessão. Use o Ctrl+Z se precisar alterar.")
+        if origin.id in self.state.processed_ids:
+            self.ui.console.print("\n[AVISO] Este ID já foi processado nesta sessão.")
             time.sleep(2)
             return
 
-        self.ui.limpar_tela()
-        self.ui.console.print(Panel("[bold bright_cyan]SUBSTITUIÇÃO MANUAL LIVRE (DE ➜ PARA)[/bold bright_cyan]", border_style="bright_cyan"))
-        self.ui.console.print(f"[bold bright_green]ID ANTIGO (SERÁ SUBSTITUÍDO):[/bold bright_green] {origem.id} | {escape(origem.nome)} ({origem.movimentacoes} ocorrências)\n")
+        self.ui.clear_screen()
+        self.ui.console.print(Panel(f"ID ANTIGO: {origin.id} | {escape(origin.name)} ({origin.transactions_count} ocorrências)", title="SUBSTITUIÇÃO MANUAL", border_style="bright_cyan"))
+        self.ui.console.print("Qual será o NOVO ID Oficial nessas linhas? (Destino)\nDigite o Nome ou ID (ENTER p/ cancelar): ", end="")
         
-        self.ui.console.print("[bold bright_white]PASSO 2: Qual será o NOVO ID Oficial nessas linhas? (Destino)[/bold bright_white]")
-        self.ui.console.print("Digite o Nome ou ID (ENTER p/ cancelar): ", end="")
-        busca_dest = input().strip()
-        if not busca_dest: return
+        search_dest = input().strip()
+        if not search_dest: return
 
-        dest_id, nome_dest, dest_forn = self._buscar_destino(busca_dest)
+        dest_id, dest_name, dest_entity = self._search_target(search_dest)
         
-        if dest_id:
-            if self.ui.exibir_confirmacao_migracao([origem], dest_id, nome_dest, dest_forn, self.modo_nome):
-                self.state.aplicar_migracao_em_lote([origem], dest_id, dest_forn, self.migration, 'M', 'MANUAL')
+        if dest_id and self.ui.confirm_migration([origin], dest_id, dest_name, dest_entity, self.mode_name):
+            self.state.apply_batch_migration([origin], dest_id, dest_entity, self.migration, 'M', 'MANUAL')
 
-    # ==========================================
-    # BOTÃO 3: RAIO-X / PESQUISA (DINÂMICO E PADRONIZADO)
-    # ==========================================
-    def acao_raiox_pesquisa(self):
-        busca = ""
+    def handle_search(self):
+        term = ""
         while True:
-            # Se não tem uma busca ativa, pede para o usuário digitar
-            if not busca:
-                self.ui.limpar_tela()
-                self.ui.console.print(Panel(f"[bold bright_yellow]🔍 MODO DE PESQUISA (RAIO-X DE {self.modo_nome})[/bold bright_yellow]", border_style="bright_yellow"))
-                self.ui.console.print("[bold bright_white]Qual registro você deseja consultar nas planilhas?[/bold bright_white]")
-                self.ui.console.print("Digite o Nome ou ID (ENTER vazio para Voltar ao Menu): ", end="")
-                busca = input().strip()
-                if not busca: return # Volta ao hub se der Enter vazio
+            if not term:
+                self.ui.clear_screen()
+                self.ui.console.print(Panel(f"MODO DE PESQUISA ({self.mode_name})", border_style="yellow"))
+                self.ui.console.print("Qual registro deseja consultar? (ENTER vazio para Voltar): ", end="")
+                term = input().strip()
+                if not term: return 
             
-            resultados = self.duplicate.buscar_por_nome_parcial(busca, self.fornecedores)
-            exato = self.duplicate.buscar_por_id(busca, self.fornecedores)
+            results = self.duplicate.search_by_partial_name(term, self.records)
+            exact = self.duplicate.find_by_id(term, self.records)
             
-            # Junta os resultados priorizando o idêntico no topo
-            lista_resultados = []
-            if exato: lista_resultados.append(exato)
-            if resultados:
-                for r in resultados:
-                    if r not in lista_resultados: lista_resultados.append(r)
+            combined = []
+            if exact: combined.append(exact)
+            for r in results:
+                if r not in combined: combined.append(r)
             
-            if not lista_resultados:
-                self.ui.console.print(f"\n[bold red][AVISO][/bold red] Nada encontrado na base oficial com '{escape(busca)}'.")
+            if not combined:
+                self.ui.console.print(f"\n[ERRO] Nada encontrado com '{escape(term)}'.")
                 time.sleep(1.5)
-                busca = "" # Zera para ele cair no input inicial na próxima volta do loop
+                term = "" 
                 continue
                 
-            # Chama o novo painel dinâmico (Onde apenas passar o cursor já mostra o Raio-X)
-            acao = self.ui.menu_raiox_dinamico(lista_resultados, busca, self.modo_nome)
-            
-            if acao == 'ESC':
-                return # Mata o loop e volta pro Menu Principal
-            elif acao == 'I':
-                busca = "" # Zera a busca: O loop vai rodar de novo e pedir o próximo ID automaticamente!
+            action = self.ui.dynamic_xray_menu(combined, term, self.mode_name)
+            if action == 'ESC': return 
+            elif action == 'I': term = "" 
 
-    # ==========================================
-    # BOTÃO 4: CAÇADOR DE ÓRFÃOS
-    # ==========================================
-    def acao_cacador_orfaos(self):
-        master_ids = {str(f.id).strip().lower() for f in self.fornecedores}
-        orfaos = {k: v for k, v in self.contagem.items() if str(k).strip().lower() not in master_ids and str(k).strip() and str(k).lower() != "none"}
+    def handle_orphan_audit(self):
+        master_ids = {str(f.id).strip().lower() for f in self.records}
+        orphans = {k: v for k, v in self.counts.items() if str(k).strip().lower() not in master_ids and str(k).strip().lower() != "none"}
         
-        if not orfaos:
-            self.ui.limpar_tela()
-            self.ui.console.print(Panel(f"[bold bright_magenta]👻 CAÇADOR DE ÓRFÃOS ({self.modo_nome}S FANTASMAS)[/bold bright_magenta]", border_style="bright_magenta"))
-            utils_console.sucesso("\nParabéns! Não há nenhum ID fantasma nas suas planilhas de movimentação.")
+        if not orphans:
+            self.ui.clear_screen()
+            utils_console.print_success("Não há registros órfãos nas planilhas.")
             time.sleep(2)
             return
         
-        orfaos_ordenados = sorted(orfaos.items(), key=lambda item: sum(item[1].values()), reverse=True)
-        self.ui.paginar_orfaos(orfaos_ordenados, self.modo_nome)
+        sorted_orphans = sorted(orphans.items(), key=lambda i: sum(i[1].values()), reverse=True)
+        self.ui.paginate_orphans(sorted_orphans, self.mode_name)
 
-    # ==========================================
-    # BOTÃO 5: LIMPAR PESO MORTO
-    # ==========================================
-    def acao_limpar_peso_morto(self):
-        inativos = [f for f in self.fornecedores if f.movimentacoes == 0]
+    def handle_inactive_cleanup(self):
+        inactives = [f for f in self.records if f.transactions_count == 0]
         
-        if not inativos:
-            self.ui.limpar_tela()
-            self.ui.console.print(Panel(f"[bold bright_magenta]🗑️ LIMPEZA DE PESO MORTO ({self.modo_nome}S INATIVOS)[/bold bright_magenta]", border_style="bright_magenta"))
-            utils_console.sucesso("\nExcelente! Todos os registros da base oficial possuem movimentações nas planilhas.")
+        if not inactives:
+            self.ui.clear_screen()
+            utils_console.print_success("Todos os registros possuem movimentações.")
             time.sleep(2)
             return
         
-        self.ui.paginar_inativos(inativos, self.modo_nome)
+        self.ui.paginate_inactives(inactives, self.mode_name)
 
-    # ==========================================
-    # BOTÃO 6: SINCRONIZADOR CRUZADO
-    # ==========================================
-    def acao_sincronizador_cruzado(self):
-        self.ui.limpar_tela()
-        self.ui.console.print(Panel(f"[bold bright_blue]🔗 LENDO MATRIZ RELACIONAL...[/bold bright_blue]", border_style="bright_blue"))
-        print("Cruzando chaves primárias entre Contas a Pagar e Notas...")
+    def handle_cross_sync(self):
+        self.ui.clear_screen()
+        self.ui.console.print(Panel("LENDO MATRIZ RELACIONAL...", border_style="blue"))
         
-        conflitos = self.cross.escanear_integridade(self.excel.workbooks, self.fornecedores)
+        conflicts = self.cross.scan_referential_integrity(self.excel.workbooks, self.records)
         
-        if not conflitos:
-            utils_console.sucesso("\nIntegridade 100%! Nenhuma quebra encontrada entre as notas e as contas.")
+        if not conflicts:
+            utils_console.print_success("Integridade 100%! Nenhuma quebra encontrada.")
             time.sleep(2)
             return
 
-        pagina_atual = 0
-        while conflitos:
-            tamanho_pagina = 10
-            total_paginas = max(1, (len(conflitos) + tamanho_pagina - 1) // tamanho_pagina)
-            if pagina_atual >= total_paginas: pagina_atual = max(0, total_paginas - 1)
+        page = 0
+        while conflicts:
+            action = self.ui.paginate_conflicts(conflicts, page)
 
-            acao = self.ui.paginar_conflitos(conflitos, pagina_atual)
-
-            if acao == 'PROXIMO':
-                pagina_atual += 1
-            elif acao == 'ANTERIOR':
-                pagina_atual -= 1
-            elif acao == 'SAIR':
-                break
-            elif acao == 'EXPORTAR':
-                with open("RELATORIO_QUEBRAS.txt", "w", encoding="utf-8") as f_out:
-                    f_out.write("=== RELATORIO DE QUEBRAS REFERENCIAIS ===\n")
-                    f_out.write("Notas com divergência entre Contas a Pagar e Notas de Compra:\n\n")
-                    for c in conflitos:
-                        loja = self.ui._limpar_nome_loja(c['conta']['arquivo'])[0]
-                        f_out.write(f"LOJA: {loja} | NOTA Nº: {c['id_nota']}\n")
-                        f_out.write(f"  -> Contas a Pagar: {c['conta']['val'] or '---'} ({c['st_c']})\n")
-                        f_out.write(f"  -> Notas de Compra: {c['nota']['val'] or '---'} ({c['st_n']})\n")
-                        f_out.write("-" * 50 + "\n")
-                utils_console.sucesso("\nRelatório exportado com sucesso: RELATORIO_QUEBRAS.txt")
+            if action == 'NEXT': page += 1
+            elif action == 'PREV': page -= 1
+            elif action == 'EXIT': break
+            elif action == 'EXPORT':
+                with open("RELATORIO_QUEBRAS.txt", "w", encoding="utf-8") as f:
+                    for c in conflicts:
+                        f.write(f"NOTA: {c['transaction_id']} | Contas: {c['bill']['val']} | Compra: {c['invoice']['val']}\n")
+                utils_console.print_success("Relatório salvo.")
                 time.sleep(2)
+            elif action == 'RESOLVE':
+                self._resolve_conflicts_batch(conflicts)
 
-            elif acao == 'RESOLVER':
-                # --- FLUXO MODO MICRO PERSISTENTE ---
-                while True:
-                    # Recalcula as páginas dinamicamente para não bugar a lista quando os itens sumirem
-                    tamanho_pagina = 10
-                    total_paginas = max(1, (len(conflitos) + tamanho_pagina - 1) // tamanho_pagina)
-                    if pagina_atual >= total_paginas: 
-                        pagina_atual = max(0, total_paginas - 1)
-                    
-                    inicio = pagina_atual * tamanho_pagina
-                    conflitos_pagina = conflitos[inicio:inicio + tamanho_pagina]
-
-                    if not conflitos_pagina:
-                        break # Se zerou tudo nesta visão, volta pro Macro automaticamente
-
-                    acao_lote, alvos = self.ui.menu_resolucao_lote(conflitos_pagina, len(conflitos))
-                    
-                    if acao_lote == 'Q':
-                        break # Sai do modo Micro por vontade do usuário
-                        
-                    if not alvos:
-                        continue 
-                        
-                    sucesso_count = 0
-                    resolvidos_ids = set()
-                    
-                    if acao_lote == 'I':
-                        self.ui.limpar_tela()
-                        self.ui.console.print(Panel("[bold bright_cyan]PESQUISAR ID DEFINITIVO PARA O LOTE[/bold bright_cyan]", border_style="bright_cyan"))
-                        self.ui.console.print("Digite o ID exato ou Nome (ENTER p/ cancelar): ", end="")
-                        busca = input().strip()
-                        if not busca: continue
-                        
-                        id_escolhido = None
-                        resultados = self.duplicate.buscar_por_nome_parcial(busca, self.fornecedores)
-                        if resultados:
-                            escolha = self.ui.menu_pesquisa_nativo(resultados, busca, self.state.sessao_atual, self.state.ids_processados)
-                            if escolha and escolha != "EXTERNO":
-                                id_escolhido = escolha.id
-                            elif escolha == "EXTERNO":
-                                id_escolhido = busca
-                        else:
-                            exato = self.duplicate.buscar_por_id(busca, self.fornecedores)
-                            if exato: id_escolhido = exato.id
-                            else:
-                                self.ui.console.print("\n[bold red]Nenhum ID encontrado.[/bold red]")
-                                time.sleep(1)
-                                continue
-                                
-                        if id_escolhido:
-                            for c in alvos:
-                                self.cross.selar_paz(c, id_escolhido)
-                                resolvidos_ids.add(c['id_nota'])
-                                sucesso_count += 1
-                                
-                    elif acao_lote == 'S':
-                        for c in alvos:
-                            if c['sugestao_id']:
-                                self.cross.selar_paz(c, c['sugestao_id'])
-                                resolvidos_ids.add(c['id_nota'])
-                                sucesso_count += 1
-                    
-                    elif acao_lote == 'C':
-                        for c in alvos:
-                            val = c['conta']['val']
-                            if val:
-                                self.cross.selar_paz(c, val)
-                                resolvidos_ids.add(c['id_nota'])
-                                sucesso_count += 1
-                                
-                    elif acao_lote == 'N':
-                        for c in alvos:
-                            val = c['nota']['val']
-                            if val:
-                                self.cross.selar_paz(c, val)
-                                resolvidos_ids.add(c['id_nota'])
-                                sucesso_count += 1
-                                
-                    if sucesso_count > 0:
-                        # ATUALIZA A LISTA OFICIAL (Isso resolve a contagem congelada!)
-                        conflitos = [c for c in conflitos if c['id_nota'] not in resolvidos_ids]
-                        
-                        utils_console.sucesso(f"\n{sucesso_count} nota(s) atualizada(s) e removida(s) com sucesso!")
-                        time.sleep(1)
-                        
-                    if not conflitos:
-                        break # Volta para a tela inicial se limpar 100% dos conflitos
-
-    # ==========================================
-    # BOTÃO Z: DESFAZER
-    # ==========================================
-    def acao_desfazer(self):
-        if self.state.historico_acoes:
-            u_acao = self.state.historico_acoes.pop()
-            self.state.reverter_acao(u_acao, self.migration)
-            self.state.atualizar_pendencias_grupos(self.grupos_duplicados) # ATUALIZA A TELA
-            self.ui.limpar_tela()
-            utils_console.sucesso("\nÚltima ação desfeita com sucesso!")
+    def handle_undo(self):
+        if self.state.action_history:
+            action = self.state.action_history.pop()
+            self.state.undo_last_action(action, self.migration)
+            self.state.update_group_pending_items(self.duplicate_groups)
+            self.ui.clear_screen()
+            utils_console.print_success("Última ação desfeita.")
             time.sleep(1)
 
-    # ==========================================
-    # BOTÃO E: EXPORTAR/ATUALIZAR EXCEL
-    # ==========================================
-    def acao_exportar_excel(self):
-        todas_migracoes = self.migration.obter_migracoes()
-        
-        # AGORA O BOTÃO "E" OLHA PARA OS DOIS LUGARES!
-        if todas_migracoes or hasattr(self.cross, 'total_resolvidos') and self.cross.total_resolvidos > 0:
-            self.ui.limpar_tela()
-            self.ui.console.print(Panel(f"[bold bright_green]🚀 ATUALIZANDO EXCEL LOCAIS E GERANDO RELATÓRIO ({self.modo_nome}S)[/bold bright_green]", expand=False))
+    def handle_export(self):
+        migrations = self.migration.get_migrations()
+        if migrations or self.cross.resolved_count > 0:
+            self.ui.clear_screen()
+            self.ui.console.print(Panel("ATUALIZANDO EXCEL E GERANDO RELATÓRIO", border_style="green"))
             
-            if todas_migracoes:
-                print(f"Buscando e substituindo {len(todas_migracoes)} IDs nas abas permitidas...")
-                self.excel.atualizar_ids(todas_migracoes)
-                falhas = self.excel.validar_migracoes(todas_migracoes)
+            if migrations:
+                self.excel.apply_id_updates(migrations)
+                failures = self.excel.validate_migrations(migrations)
             else:
-                falhas = []
-                print(f"Salvando {self.cross.total_resolvidos} quebras de notas seladas pelo Sincronizador...")
+                failures = []
                 
-            arquivos_salvos = self.excel.salvar_planilhas()
+            saved_files = self.excel.save_workbooks()
             
-            if todas_migracoes:
+            if migrations:
                 with open("RELATORIO_EXCLUSAO.txt", "w", encoding="utf-8") as f:
-                    f.write(f"=== {self.modo_nome}S ATUALIZADOS ===\n")
-                    f.write("As linhas contendo estes IDs foram atualizadas com sucesso nos arquivos físicos.\n")
-                    f.write("ATENÇÃO: Como a base The Best Almeida fica na nuvem, lembre-se de deletar estes IDs manualmente:\n\n")
-                    for m in todas_migracoes:
-                        f.write(f"ID INATIVO A DELETAR: {m.origem}  ---> (Agora pertencem ao ID: {m.destino})\n")
-                
-                print(f"\n>> Relatório gerado: RELATORIO_EXCLUSAO.txt")
-                self.ui.console.print(Panel("[bold bright_yellow]ATENÇÃO PARA LIMPEZA DA BASE OFICIAL:[/bold bright_yellow]\nUse o RELATORIO_EXCLUSAO.txt como guia para deletar as linhas antigas da nuvem.", border_style="bright_yellow"))
+                    for m in migrations:
+                        f.write(f"DELETAR: {m.source_id} -> NOVO ID: {m.target_id}\n")
+                self.ui.console.print("Guia de exclusão gerado: RELATORIO_EXCLUSAO.txt")
             
-            self.report.mostrar_validacao(falhas, arquivos_salvos, None)
+            self.report.show_validation(failures, saved_files)
             sys.exit()
         else:
-            self.ui.limpar_tela()
-            utils_console.sucesso("\nNenhuma alteração na fila. Os arquivos do Excel permanecem intocados.")
+            self.ui.clear_screen()
+            utils_console.print_success("Nenhuma alteração pendente.")
             time.sleep(2)
             
-    # ==========================================
-    # BOTÃO Q: SALVAR E SAIR
-    # ==========================================
-    def acao_salvar_sair(self):
-        self.ui.limpar_tela()
-        utils_console.sucesso(f"\nProgresso salvo com segurança em '{self.state.arquivo_backup}'. Até mais!")
+    def handle_exit(self):
+        self.ui.clear_screen()
+        utils_console.print_success(f"Progresso salvo em '{self.state.backup_file}'.")
         sys.exit()
 
-    # ==========================================
-    # MÉTODOS INTERNOS DE APOIO (Helpers)
-    # ==========================================
-    def _retroceder_grupos(self):
-        self.ui.limpar_tela()
-        self.ui.console.print(Panel("[bold bright_yellow]VIAGEM NO TEMPO (RETROCEDER GRUPOS)[/bold bright_yellow]", border_style="bright_yellow"))
-        grupos_com_historico = sorted(list(set(a['grupo_idx'] for a in self.state.historico_acoes if isinstance(a['grupo_idx'], int))))
+    def _resolve_conflicts_batch(self, conflicts):
+        page = 0
+        while True:
+            size = 10
+            pages = max(1, (len(conflicts) + size - 1) // size)
+            if page >= pages: page = max(0, pages - 1)
+            
+            current_page = conflicts[page*size : (page+1)*size]
+            if not current_page: break
+
+            action, targets = self.ui.batch_resolution_menu(current_page, len(conflicts))
+            if action == 'Q': break
+            if not targets: continue 
+                
+            success_count = 0
+            resolved_ids = set()
+            
+            if action == 'I':
+                self.ui.clear_screen()
+                self.ui.console.print("Pesquisar ID Definitivo\nDigite o ID ou Nome: ", end="")
+                term = input().strip()
+                if not term: continue
+                
+                chosen_id = None
+                res = self.duplicate.search_by_partial_name(term, self.records)
+                if res:
+                    choice = self.ui.search_menu(res, term, self.state.current_session, self.state.processed_ids)
+                    if choice and choice != "EXTERNO": chosen_id = choice.id
+                    elif choice == "EXTERNO": chosen_id = term
+                else:
+                    exact = self.duplicate.find_by_id(term, self.records)
+                    if exact: chosen_id = exact.id
+                    
+                if chosen_id:
+                    for c in targets:
+                        self.cross.apply_resolution(c, chosen_id)
+                        resolved_ids.add(c['transaction_id'])
+                        success_count += 1
+                        
+            elif action == 'S':
+                for c in targets:
+                    if c['suggestion_id']:
+                        self.cross.apply_resolution(c, c['suggestion_id'])
+                        resolved_ids.add(c['transaction_id'])
+                        success_count += 1
+            elif action == 'C':
+                for c in targets:
+                    if c['bill']['val']:
+                        self.cross.apply_resolution(c, c['bill']['val'])
+                        resolved_ids.add(c['transaction_id'])
+                        success_count += 1
+            elif action == 'N':
+                for c in targets:
+                    if c['invoice']['val']:
+                        self.cross.apply_resolution(c, c['invoice']['val'])
+                        resolved_ids.add(c['transaction_id'])
+                        success_count += 1
+                        
+            if success_count > 0:
+                conflicts[:] = [c for c in conflicts if c['transaction_id'] not in resolved_ids]
+                utils_console.print_success(f"{success_count} nota(s) resolvida(s)!")
+                time.sleep(1)
+                
+            if not conflicts: break
+
+    def _rollback_groups(self):
+        self.ui.clear_screen()
+        self.ui.console.print(Panel("RETROCEDER GRUPOS", border_style="yellow"))
+        history_groups = sorted(list(set(a['group_idx'] for a in self.state.action_history if isinstance(a['group_idx'], int))))
         
-        if not grupos_com_historico:
-            self.ui.console.print("\n[bold bright_yellow][AVISO][/bold bright_yellow] Não há histórico para retroceder.")
+        if not history_groups:
+            self.ui.console.print("\n[AVISO] Sem histórico para retroceder.")
             time.sleep(2)
             return None
             
-        self.ui.console.print("[bold bright_white]Ações reversíveis nos seguintes grupos:[/bold bright_white]\n")
-        for g_idx in grupos_com_historico:
-            g_nome = self.grupos_duplicados[g_idx].nome
-            self.ui.console.print(f" [bold bright_cyan]➜[/bold bright_cyan] Grupo {g_idx + 1}: [bright_white]{escape(g_nome)}[/bright_white]")
+        for g_idx in history_groups:
+            self.ui.console.print(f" Grupo {g_idx + 1}: {escape(self.duplicate_groups[g_idx].name)}")
             
-        self.ui.console.print("\n[bold bright_white]NÚMERO do Grupo para voltar (ENTER cancela): [/bold bright_white]", end="")
-        alvo_str = input().strip()
-        if not alvo_str.isdigit(): return None
-        target_idx = int(alvo_str) - 1
-        if target_idx not in grupos_com_historico: return None
+        self.ui.console.print("\nNÚMERO do Grupo para voltar (ENTER cancela): ", end="")
+        target_str = input().strip()
+        if not target_str.isdigit(): return None
+        target_idx = int(target_str) - 1
+        if target_idx not in history_groups: return None
         
-        acoes_desfeitas = 0
-        while self.state.historico_acoes and isinstance(self.state.historico_acoes[-1]['grupo_idx'], int) and self.state.historico_acoes[-1]['grupo_idx'] >= target_idx:
-            u_acao = self.state.historico_acoes.pop()
-            self.state.reverter_acao(u_acao, self.migration)
-            acoes_desfeitas += 1
+        while self.state.action_history and isinstance(self.state.action_history[-1]['group_idx'], int) and self.state.action_history[-1]['group_idx'] >= target_idx:
+            action = self.state.action_history.pop()
+            self.state.undo_last_action(action, self.migration)
 
-        self.state.atualizar_pendencias_grupos(self.grupos_duplicados)
-        utils_console.sucesso(f"\nRollback concluído! {acoes_desfeitas} ação(ões) desfeita(s).")
-        time.sleep(2)
+        self.state.update_group_pending_items(self.duplicate_groups)
+        utils_console.print_success("Rollback concluído.")
+        time.sleep(1)
         return target_idx
 
-    def _desfazer_acao_local(self, idx_atual):
-        u_acao = self.state.historico_acoes.pop()
-        self.state.reverter_acao(u_acao, self.migration)
-        self.state.atualizar_pendencias_grupos(self.grupos_duplicados)
-        utils_console.sucesso("\nDesfeito com sucesso!")
+    def _undo_local_action(self, current_idx):
+        action = self.state.action_history.pop()
+        self.state.undo_last_action(action, self.migration)
+        self.state.update_group_pending_items(self.duplicate_groups)
+        utils_console.print_success("Desfeito com sucesso.")
         time.sleep(1)
-        if isinstance(u_acao['grupo_idx'], int) and u_acao['grupo_idx'] < idx_atual:
-            return True
-        return False
+        return isinstance(action['group_idx'], int) and action['group_idx'] < current_idx
 
-    def _buscar_destino(self, busca):
-        dest_forn = self.duplicate.buscar_por_id(busca, self.fornecedores)
-        if dest_forn:
-            return dest_forn.id, dest_forn.nome, dest_forn
+    def _search_target(self, term):
+        exact = self.duplicate.find_by_id(term, self.records)
+        if exact: return exact.id, exact.name, exact
             
-        resultados = self.duplicate.buscar_por_nome_parcial(busca, self.fornecedores)
-        if resultados:
-            escolha = self.ui.menu_pesquisa_nativo(resultados, busca, self.state.sessao_atual, self.state.ids_processados)
-            if escolha is None: return None, None, None
-            if escolha == "EXTERNO": return busca, "ID EXTERNO", None
-            return escolha.id, escolha.nome, escolha
+        results = self.duplicate.search_by_partial_name(term, self.records)
+        if results:
+            choice = self.ui.search_menu(results, term, self.state.current_session, self.state.processed_ids)
+            if choice is None: return None, None, None
+            if choice == "EXTERNO": return term, "ID EXTERNO", None
+            return choice.id, choice.name, choice
             
-        self.ui.console.print(f"\n[bold red][AVISO][/bold red] Nada encontrado com '{escape(busca)}'.")
-        self.ui.console.print("[bold bright_white]Forçar uso como ID externo? (S/N): [/bold bright_white]", end="")
-        if input().strip().upper() == 'S':
-            return busca, "ID EXTERNO", None
+        self.ui.console.print(f"\n[ERRO] Nada encontrado com '{escape(term)}'.")
+        self.ui.console.print("Forçar uso como ID externo? (S/N): ", end="")
+        if input().strip().upper() == 'S': return term, "ID EXTERNO", None
         return None, None, None
 
-    def _trazer_para_grupo(self, grupo, marcados):
-        self.ui.limpar_tela()
-        self.ui.console.print(Panel(f"[bold bright_cyan]TRAZER {self.modo_nome} PARA O GRUPO[/bold bright_cyan]", border_style="bright_cyan"))
-        self.ui.console.print("\n[bold bright_cyan]>[/bold bright_cyan] Digite o ID ou parte do Nome para pesquisar (ENTER p/ cancelar): ", end="")
-        busca = input().strip()
-        if not busca: return
+    def _bring_to_group(self, group, marked):
+        self.ui.clear_screen()
+        self.ui.console.print("Pesquisar registro para agrupar (ENTER cancela): ", end="")
+        term = input().strip()
+        if not term: return
         
-        escolhas = []
-        dest_forn = self.duplicate.buscar_por_id(busca, self.fornecedores)
-        if dest_forn: escolhas = [dest_forn]
+        choices = []
+        exact = self.duplicate.find_by_id(term, self.records)
+        if exact: choices = [exact]
         else:
-            resultados = self.duplicate.buscar_por_nome_parcial(busca, self.fornecedores)
-            if resultados:
-                pendentes_ids = {f.id for f in grupo.itens_pendentes}
-                escolhas = self.ui.menu_pesquisa_multi(resultados, busca, self.state.sessao_atual, self.state.ids_processados, pendentes_ids)
-                if not escolhas: return
+            results = self.duplicate.search_by_partial_name(term, self.records)
+            if results:
+                pending_ids = {f.id for f in group.pending_items}
+                choices = self.ui.search_menu(results, term, self.state.current_session, self.state.processed_ids, multi=True, pending_ids=pending_ids)
+                if not choices: return
             else:
-                self.ui.console.print("\n[bold bright_yellow][AVISO][/bold bright_yellow] Nenhum registro encontrado com esse nome/ID.")
+                self.ui.console.print("\n[AVISO] Nenhum registro encontrado.")
                 time.sleep(1.5)
                 return
         
-        adicionados = 0
-        for escolha in escolhas:
-            if escolha.id in self.state.ids_processados:
-                self.ui.console.print(f"\n[bold bright_yellow][AVISO][/bold bright_yellow] O ID {escolha.id} já foi processado nesta sessão!")
-                time.sleep(1)
-                continue
-            if any(f.id == escolha.id for f in grupo.itens_pendentes):
-                self.ui.console.print(f"\n[bold bright_yellow][AVISO][/bold bright_yellow] O ID {escolha.id} já está na lista deste grupo!")
-                time.sleep(1)
-                continue
-            grupo.itens_pendentes.append(escolha)
-            if escolha not in grupo.duplicados: grupo.duplicados.append(escolha)
-            adicionados += 1
+        added = 0
+        for choice in choices:
+            if choice.id in self.state.processed_ids: continue
+            if any(f.id == choice.id for f in group.pending_items): continue
+            group.pending_items.append(choice)
+            if choice not in group.duplicates: group.duplicates.append(choice)
+            added += 1
             
-        if adicionados > 0:
-            utils_console.sucesso(f"\n{adicionados} registro(s) puxado(s) para este grupo!")
-            time.sleep(1.5)
+        if added > 0:
+            utils_console.print_success(f"{added} registro(s) adicionado(s) ao grupo!")
+            time.sleep(1)
 
-    def _substituir_por_outro(self, alvos, grupo, marcados, idx_grupo):
-        self.ui.limpar_tela()
-        self.ui.console.print(Panel("[bold bright_cyan]SUBSTITUIÇÃO SELEÇÃO POR OUTRO ID[/bold bright_cyan]", border_style="bright_cyan"))
-        self.ui.console.print("\n[bold bright_cyan]>[/bold bright_cyan] Digite o ID exato OU parte do Nome (ENTER p/ cancelar): ", end="")
-        busca = input().strip()
-        if not busca: return
+    def _substitute_with_another(self, targets, group, marked, group_idx):
+        self.ui.clear_screen()
+        self.ui.console.print("Pesquisar NOVO ID Oficial (ENTER cancela): ", end="")
+        term = input().strip()
+        if not term: return
             
-        dest_id, nome_dest, dest_forn = self._buscar_destino(busca)
-
-        if dest_id:
-            if self.ui.exibir_confirmacao_migracao(alvos, dest_id, nome_dest, dest_forn, self.modo_nome):
-                self.state.aplicar_migracao_em_lote(alvos, dest_id, dest_forn, self.migration, 'I', idx_grupo)
-                marcados.clear()
+        dest_id, dest_name, dest_entity = self._search_target(term)
+        if dest_id and self.ui.confirm_migration(targets, dest_id, dest_name, dest_entity, self.mode_name):
+            self.state.apply_batch_migration(targets, dest_id, dest_entity, self.migration, 'I', group_idx)
+            marked.clear()

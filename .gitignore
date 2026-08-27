@@ -3,7 +3,7 @@
 venv/
 env/
 
-# Cache e Binários do Python
+# Cache e Binários
 __pycache__/
 *.pyc
 *.pyo
@@ -15,11 +15,11 @@ RELATORIO_EXCLUSAO.txt
 backup_sessao.json
 relatorio_exclusao.txt
 RELATORIO_ORFAOS.txt
-# Pastas Sensiveis
+
 movimentacoes/
 saida/
 contas/
-# Planilhas Base e Documentos
+# Planilhas/Documentos
 ATUALIZADO_*.xlsx
 MERGED_*.xlsx
 The Best Almeida*.xlsx

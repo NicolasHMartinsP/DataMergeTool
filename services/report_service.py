@@ -3,37 +3,35 @@ from models.duplicate_group import DuplicateGroup
 from utils import console
 
 class ReportService:
-    def mostrar_relatorio(self, grupos: List[DuplicateGroup]):
+    def show_report(self, groups: List[DuplicateGroup]):
         console.limpar_tela()
-        console.titulo("DATA MERGE TOOL")
+        console.titulo("DATA MERGE TOOL v8.0")
         
-        if not grupos:
+        if not groups:
             print("Nenhum fornecedor duplicado encontrado.")
             return
 
-        for grupo in grupos:
-            print(f"Fornecedor: {grupo.nome}")
-            print(f"Agrupado por: [{grupo.motivo}]\n")
+        for group in groups:
+            print(f"Fornecedor: {group.name}")
+            print(f"Agrupado por: [{group.reason}]\n")
             print(f"{'ID':<14} {'Qtd':<6} {'Rastreio por Loja'}\n")
             
-            for f in grupo.duplicados:
-                detalhe_lojas = " | ".join([f"{loja}: {qtd}" for loja, qtd in f.movimentacoes_por_loja.items()])
-                detalhe_str = f"({detalhe_lojas})" if detalhe_lojas else ""
+            for item in group.duplicates:
+                store_details = " | ".join([f"{store}: {qty}" for store, qty in item.transactions_by_store.items()])
+                details_str = f"({store_details})" if store_details else ""
                 
-                # Exibe o nome real do cara pra você saber quem ele juntou
-                print(f"{f.id:<14} {f.movimentacoes:<6} {f.nome} {detalhe_str}")
+                print(f"{item.id:<14} {item.transactions_count:<6} {item.name} {details_str}")
                 
-            print(f"\nSugestão Global:\n{grupo.mestre.id}\n")
+            print(f"\nSugestão Global:\n{group.master.id}\n")
             console.separador()
             
-    def mostrar_validacao(self, falhas: List[str], arquivos_salvos: List[str], arquivo_fornecedores: str):
+    def show_validation(self, failures: List[str], saved_files: List[str]):
         console.separador()
-        if falhas:
-            console.erro(f"Validação falhou! {len(falhas)} IDs antigos ainda constam nas planilhas:")
-            print(falhas)
+        if failures:
+            console.erro(f"Validação com ressalvas: {len(failures)} IDs antigos ainda constam nas planilhas:")
+            print(failures)
         else:
-            console.sucesso("Validação concluída: 100% dos IDs antigos substituídos.")
-            console.sucesso(f"Base de Fornecedores Mestre LIMPA E SALVA em: {arquivo_fornecedores}")
-            console.sucesso(f"{len(arquivos_salvos)} planilhas de movimentações salvas:\n")
-            for arquivo in arquivos_salvos:
-                print(f" -> {arquivo}")
+            console.sucesso("Validação concluída: 100% dos IDs antigos foram substituídos nas planilhas locais.")
+            console.sucesso(f"{len(saved_files)} planilhas de movimentações salvas e atualizadas:\n")
+            for file in saved_files:
+                print(f" -> {file}")

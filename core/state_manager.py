@@ -2,129 +2,159 @@ import json
 import os
 
 class StateManager:
-    def __init__(self, arquivo_backup):
-        self.arquivo_backup = arquivo_backup
-        self.sessao_atual = {}
-        self.historico_acoes = []
-        self.ids_processados = set()
+    def __init__(self, backup_file: str):
+        self.backup_file = backup_file
+        self.current_session = {}
+        self.action_history = []
+        self.processed_ids = set()
 
-    def salvar_progresso(self):
-        """ Salva o estado atual no arquivo JSON de backup """
-        historico_serializado = []
-        for acao in self.historico_acoes:
-            historico_serializado.append({
-                'tipo': acao['tipo'],
-                'grupo_idx': acao['grupo_idx'],
-                'alvos_ids': [a['obj'].id for a in acao['alvos']],
-                'dest_fornecedor_id': acao['dest_fornecedor'].id if acao.get('dest_fornecedor') else None
+    def save_state(self):
+        """Persists the current state and action history to a JSON backup file."""
+        serialized_history = []
+        for action in self.action_history:
+            serialized_history.append({
+                'type': action['type'],
+                'group_idx': action['group_idx'],
+                'target_ids': [a['obj'].id for a in action['targets']],
+                'dest_entity_id': action['dest_entity'].id if action.get('dest_entity') else None
             })
-        dados = {"sessao_atual": self.sessao_atual, "historico": historico_serializado}
-        with open(self.arquivo_backup, "w", encoding="utf-8") as out:
-            json.dump(dados, out, ensure_ascii=False, indent=4)
-
-    def carregar_backup(self, fornecedores, duplicate_service, migration_service):
-        """ Tenta restaurar a sessão a partir do arquivo JSON na inicialização """
-        if os.path.exists(self.arquivo_backup):
-            try:
-                with open(self.arquivo_backup, "r", encoding="utf-8") as f:
-                    dados = json.load(f)
-                    
-                sessao_atual_raw = dados.get("sessao_atual", {})
-                historico_raw = dados.get("historico", [])
-
-                if historico_raw:
-                    for acao_raw in historico_raw:
-                        tipo = acao_raw.get('tipo', 'M')
-                        grupo_idx = acao_raw.get('grupo_idx', 'RECUPERADO')
-                        dest_id = acao_raw.get('dest_fornecedor_id')
-                        dest_forn = duplicate_service.buscar_por_id(dest_id, fornecedores) if dest_id else None
-                        
-                        alvos_objs = [duplicate_service.buscar_por_id(aid, fornecedores) for aid in acao_raw.get('alvos_ids', [])]
-                        alvos_objs = [obj for obj in alvos_objs if obj]
-                        
-                        if not alvos_objs: continue
-                        
-                        if tipo in ['S', 'I', 'M']: 
-                            self.aplicar_migracao_em_lote(alvos_objs, dest_id, dest_forn, migration_service, tipo, grupo_idx, restaurando_backup=True)
-                        elif tipo == 'P': 
-                            self.aplicar_pulo_em_lote(alvos_objs, grupo_idx, restaurando_backup=True)
-                            
-                elif sessao_atual_raw:
-                    for orig, dest in sessao_atual_raw.items():
-                        f_orig = duplicate_service.buscar_por_id(orig, fornecedores)
-                        f_dest = duplicate_service.buscar_por_id(dest, fornecedores)
-                        if f_orig: 
-                            self.aplicar_migracao_em_lote([f_orig], dest, f_dest, migration_service, 'M', 'RECUPERADO', restaurando_backup=True)
-
-            except Exception as e:
-                print(f"Erro ao ler backup anterior: {e}")
-
-    def aplicar_migracao_em_lote(self, alvos, dest_id, dest_forn, migration_service, tipo, grupo_idx, restaurando_backup=False):
-        """ Executa uma substituição e guarda na memória """
-        alvos_data = []
-        for f in alvos:
-            if f.id == dest_id: continue
-            alvos_data.append({'obj': f, 'movs': f.movimentacoes, 'lojas': f.movimentacoes_por_loja.copy()})
-            migration_service.criar_migracao_individual(f, dest_id)
-            self.sessao_atual[f.id] = dest_id
-            self.ids_processados.add(f.id)
-            
-            if dest_forn:
-                dest_forn.movimentacoes += f.movimentacoes
-                for loja, qtd in f.movimentacoes_por_loja.items():
-                    dest_forn.movimentacoes_por_loja[loja] = dest_forn.movimentacoes_por_loja.get(loja, 0) + qtd
-                    
-            f.movimentacoes = 0
-            f.movimentacoes_por_loja = {}
-
-        if alvos_data:
-            self.historico_acoes.append({'tipo': tipo, 'grupo_idx': grupo_idx, 'alvos': alvos_data, 'dest_fornecedor': dest_forn})
-            
-        if not restaurando_backup:
-            self.salvar_progresso()
-
-    def aplicar_pulo_em_lote(self, alvos, grupo_idx, restaurando_backup=False):
-        """ Guarda a ação de Pular no histórico """
-        alvos_data = []
-        for f in alvos:
-            alvos_data.append({'obj': f})
-            self.ids_processados.add(f.id)
-            
-        if alvos_data:
-            self.historico_acoes.append({'tipo': 'P', 'grupo_idx': grupo_idx, 'alvos': alvos_data, 'dest_fornecedor': None})
         
-        if not restaurando_backup:
-            self.salvar_progresso()
-
-    def reverter_acao(self, u_acao, migration_service):
-        """ A Mágica do Ctrl+Z: Devolve as quantidades exatas de onde elas vieram """
-        dest_f = u_acao['dest_fornecedor']
-        if u_acao['tipo'] in ['S', 'I', 'M']:
-            for alvo_data in u_acao['alvos']:
-                f = alvo_data['obj']
-                t_movs = alvo_data['movs']
-                t_lojas = alvo_data['lojas']
-                migration_service.remover_migracao_individual(f.id)
-                
-                if f.id in self.sessao_atual: del self.sessao_atual[f.id]
-                self.ids_processados.discard(f.id)
-                
-                if dest_f and f.id != dest_f.id: 
-                    dest_f.movimentacoes -= t_movs
-                    for loja, qtd in t_lojas.items():
-                        dest_f.movimentacoes_por_loja[loja] -= qtd
-                        if dest_f.movimentacoes_por_loja[loja] <= 0: del dest_f.movimentacoes_por_loja[loja]
-                            
-                f.movimentacoes = t_movs
-                f.movimentacoes_por_loja = t_lojas.copy()
-                
-        elif u_acao['tipo'] == 'P':
-            for alvo_data in u_acao['alvos']: 
-                self.ids_processados.discard(alvo_data['obj'].id)
+        data = {
+            "current_session": self.current_session,
+            "history": serialized_history
+        }
         
-        self.salvar_progresso()
+        with open(self.backup_file, "w", encoding="utf-8") as out:
+            json.dump(data, out, ensure_ascii=False, indent=4)
 
-    def atualizar_pendencias_grupos(self, grupos_duplicados):
-        """ Atualiza visualmente as listas de conflitos """
-        for grupo in grupos_duplicados:
-            grupo.itens_pendentes = [f for f in grupo.duplicados if f.id not in self.ids_processados]
+    def load_backup(self, entities, duplicate_service, migration_service):
+        """Attempts to restore session state from a previous JSON backup."""
+        if not os.path.exists(self.backup_file):
+            return
+
+        try:
+            with open(self.backup_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                
+            session_raw = data.get("current_session", {})
+            history_raw = data.get("history", [])
+
+            if history_raw:
+                for action_raw in history_raw:
+                    action_type = action_raw.get('type', 'M')
+                    group_idx = action_raw.get('group_idx', 'RECOVERED')
+                    dest_id = action_raw.get('dest_entity_id')
+                    dest_entity = duplicate_service.find_by_id(dest_id, entities) if dest_id else None
+                    
+                    target_objs = [duplicate_service.find_by_id(tid, entities) for tid in action_raw.get('target_ids', [])]
+                    target_objs = [obj for obj in target_objs if obj]
+                    
+                    if not target_objs:
+                        continue
+                    
+                    if action_type in ['S', 'I', 'M']: 
+                        self.apply_batch_migration(target_objs, dest_id, dest_entity, migration_service, action_type, group_idx, is_restoring=True)
+                    elif action_type == 'P': 
+                        self.apply_batch_skip(target_objs, group_idx, is_restoring=True)
+                        
+            elif session_raw:
+                for orig, dest in session_raw.items():
+                    e_orig = duplicate_service.find_by_id(orig, entities)
+                    e_dest = duplicate_service.find_by_id(dest, entities)
+                    if e_orig: 
+                        self.apply_batch_migration([e_orig], dest, e_dest, migration_service, 'M', 'RECOVERED', is_restoring=True)
+
+        except Exception as e:
+            print(f"Failed to load previous backup: {e}")
+
+    def apply_batch_migration(self, targets, dest_id, dest_entity, migration_service, action_type, group_idx, is_restoring=False):
+        """Executes a substitution for a batch of entities and tracks the action."""
+        targets_data = []
+        for entity in targets:
+            if entity.id == dest_id:
+                continue
+            
+            targets_data.append({
+                'obj': entity,
+                'movs': entity.transactions_count,
+                'stores': entity.transactions_by_store.copy()
+            })
+            
+            migration_service.create_individual_migration(entity, dest_id)
+            self.current_session[entity.id] = dest_id
+            self.processed_ids.add(entity.id)
+            
+            if dest_entity:
+                dest_entity.transactions_count += entity.transactions_count
+                for store, qty in entity.transactions_by_store.items():
+                    dest_entity.transactions_by_store[store] = dest_entity.transactions_by_store.get(store, 0) + qty
+                    
+            entity.transactions_count = 0
+            entity.transactions_by_store = {}
+
+        if targets_data:
+            self.action_history.append({
+                'type': action_type,
+                'group_idx': group_idx,
+                'targets': targets_data,
+                'dest_entity': dest_entity
+            })
+            
+        if not is_restoring:
+            self.save_state()
+
+    def apply_batch_skip(self, targets, group_idx, is_restoring=False):
+        """Marks entities as skipped and saves to history."""
+        targets_data = []
+        for entity in targets:
+            targets_data.append({'obj': entity})
+            self.processed_ids.add(entity.id)
+            
+        if targets_data:
+            self.action_history.append({
+                'type': 'P',
+                'group_idx': group_idx,
+                'targets': targets_data,
+                'dest_entity': None
+            })
+        
+        if not is_restoring:
+            self.save_state()
+
+    def undo_last_action(self, action_payload, migration_service):
+        """Reverts a previously tracked action, restoring counts and states."""
+        dest_entity = action_payload['dest_entity']
+        action_type = action_payload['type']
+        
+        if action_type in ['S', 'I', 'M']:
+            for target_data in action_payload['targets']:
+                entity = target_data['obj']
+                t_movs = target_data['movs']
+                t_stores = target_data['stores']
+                
+                migration_service.remove_individual_migration(entity.id)
+                
+                if entity.id in self.current_session:
+                    del self.current_session[entity.id]
+                self.processed_ids.discard(entity.id)
+                
+                if dest_entity and entity.id != dest_entity.id: 
+                    dest_entity.transactions_count -= t_movs
+                    for store, qty in t_stores.items():
+                        dest_entity.transactions_by_store[store] -= qty
+                        if dest_entity.transactions_by_store[store] <= 0:
+                            del dest_entity.transactions_by_store[store]
+                            
+                entity.transactions_count = t_movs
+                entity.transactions_by_store = t_stores.copy()
+                
+        elif action_type == 'P':
+            for target_data in action_payload['targets']: 
+                self.processed_ids.discard(target_data['obj'].id)
+        
+        self.save_state()
+
+    def update_group_pending_items(self, duplicate_groups):
+        """Updates the visual lists of pending items in duplicate groups."""
+        for group in duplicate_groups:
+            group.pending_items = [item for item in group.duplicates if item.id not in self.processed_ids]

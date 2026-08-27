@@ -1,23 +1,23 @@
 import os
 
-def limpar_tela():
+def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
 
-def titulo(texto: str):
+def print_title(text: str):
     print("=" * 60)
-    print(texto.upper())
+    print(text.upper())
     print("=" * 60)
     print()
 
-def separador():
+def print_separator():
     print("-" * 60)
     print()
 
-def aviso(mensagem):
-    print(f"\033[93m{mensagem}\033[0m")
+def print_warning(message: str):
+    print(f"\033[93m[AVISO] {message}\033[0m")
 
-def erro(texto: str):
-    print(f"[ERRO] {texto}")
+def print_error(text: str):
+    print(f"\033[91m[ERRO] {text}\033[0m")
 
-def sucesso(texto: str):
-    print(f"[SUCESSO] {texto}")
+def print_success(text: str):
+    print(f"\033[92m[SUCESSO] {text}\033[0m")

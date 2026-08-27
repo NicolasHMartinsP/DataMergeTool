@@ -2,6 +2,6 @@ from dataclasses import dataclass
 
 @dataclass
 class Migration:
-    origem: str
-    destino: str
-    quantidade_movimentacoes: int
+    source_id: str
+    target_id: str
+    transactions_count: int

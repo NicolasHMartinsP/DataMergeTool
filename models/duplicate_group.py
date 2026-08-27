@@ -1,10 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
-from models.entity import FornecedorEntity
+from models.entity import Entity
 
 @dataclass
 class DuplicateGroup:
-    nome: str
-    mestre: FornecedorEntity
-    duplicados: List[FornecedorEntity]
-    motivo: str = "Nome Exato"  # Explica por que o grupo foi formado
+    name: str
+    master: Entity
+    duplicates: List[Entity]
+    reason: str = "Exact Match"
+    pending_items: List[Entity] = field(default_factory=list)

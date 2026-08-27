@@ -9,20 +9,12 @@ from rich import box
 from rich.markup import escape
 from rich.live import Live
 from rich.text import Text
-
 from utils import console as utils_console
 
 class UIView:
     def __init__(self):
         self.console = Console()
-
-    def limpar_tela(self):
-        os.system('cls' if os.name == 'nt' else 'clear')
-
-    def selecionar_modo_operacao(self):
-        self.limpar_tela()
-        
-        logo = """
+        self.logo = """
 ██████╗  █████╗ ████████╗ █████╗     ███╗   ███╗███████╗██████╗  ██████╗ ███████╗
 ██╔══██╗██╔══██╗╚══██╔══╝██╔══██╗    ████╗ ████║██╔════╝██╔══██╗██╔════╝ ██╔════╝
 ██║  ██║███████║   ██║   ███████║    ██╔████╔██║█████╗  ██████╔╝██║  ███╗█████╗  
@@ -30,689 +22,377 @@ class UIView:
 ██████╔╝██║  ██║   ██║   ██║  ██║    ██║ ╚═╝ ██║███████╗██║  ██║╚██████╔╝███████╗
 ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝    ╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝
         """
-        self.console.print(Align.center(f"[bold bright_cyan]{logo}[/bold bright_cyan]"))
-        self.console.print(Align.center(Panel("SELECIONE O MODO DE OPERAÇÃO - DATA MERGE v7.1 (HÍBRIDO MVC)", border_style="bright_cyan")))
-        self.console.print("\n")
-        self.console.print("   [bold bright_cyan]>[/bold bright_cyan] [bold bright_white][ 1 ][/bold bright_white] [bold bright_cyan]Operar com FORNECEDORES[/bold bright_cyan]")
-        self.console.print("   [bold bright_magenta]>[/bold bright_magenta] [bold bright_white][ 2 ][/bold bright_white] [bold bright_magenta]Operar com PRODUTOS[/bold bright_magenta]")
+
+    def clear_screen(self):
+        os.system('cls' if os.name == 'nt' else 'clear')
+
+    def select_operation_mode(self):
+        self.clear_screen()
+        self.console.print(Align.center(f"[bold bright_cyan]{self.logo}[/bold bright_cyan]"))
+        self.console.print(Align.center(Panel("SELECIONE O MODO DE OPERAÇÃO - DATA MERGE v8.0", border_style="bright_cyan")))
+        import config
+        mode1_name = getattr(config, 'MODE_1_NAME', 'Modo 1').upper()
+        mode2_name = getattr(config, 'MODE_2_NAME', 'Modo 2').upper()
+        self.console.print(f"\n   [bold bright_cyan]>[/bold bright_cyan] [bold bright_white][ 1 ][/bold bright_white] [bold bright_cyan]Operar com {mode1_name}[/bold bright_cyan]")
+        self.console.print(f"   [bold bright_magenta]>[/bold bright_magenta] [bold bright_white][ 2 ][/bold bright_white] [bold bright_magenta]Operar com {mode2_name}[/bold bright_magenta]")
         self.console.print("\n   [bold bright_white]Escolha (1 ou 2): [/bold bright_white]", end="")
         
         while True:
-            tecla = msvcrt.getch()
-            if tecla == b'1': return 1
-            elif tecla == b'2': return 2
-            elif tecla == b'\x03': raise KeyboardInterrupt
+            key = msvcrt.getch()
+            if key == b'1': return 1
+            elif key == b'2': return 2
+            elif key == b'\x03': raise KeyboardInterrupt
 
-    def renderizar_hub_ui(self, pendentes_auto, len_sessao, tem_historico, modo_nome):
-        self.limpar_tela()
-        logo = """
-██████╗  █████╗ ████████╗ █████╗     ███╗   ███╗███████╗██████╗  ██████╗ ███████╗
-██╔══██╗██╔══██╗╚══██╔══╝██╔══██╗    ████╗ ████║██╔════╝██╔══██╗██╔════╝ ██╔════╝
-██║  ██║███████║   ██║   ███████║    ██╔████╔██║█████╗  ██████╔╝██║  ███╗█████╗  
-██║  ██║██╔══██║   ██║   ██╔══██║    ██║╚██╔╝██║██╔══╝  ██╔══██╗██║   ██║██╔══╝  
-██████╔╝██║  ██║   ██║   ██║  ██║    ██║ ╚═╝ ██║███████╗██║  ██║╚██████╔╝███████╗
-╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝    ╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝
-        """
-        self.console.print(Align.center(f"[bold bright_cyan]{logo}[/bold bright_cyan]"))
+    def render_hub_ui(self, pending_count, session_length, has_history, mode_name):
+        self.clear_screen()
+        self.console.print(Align.center(f"[bold bright_cyan]{self.logo}[/bold bright_cyan]"))
         
-        cor_modo = "bright_cyan" if modo_nome == "FORNECEDOR" else "bright_magenta"
+        import config
+        mode1_name = getattr(config, 'MODE_1_NAME', 'Modo 1').upper()
+        color = "bright_cyan" if mode_name == mode1_name else "bright_magenta"
         
         status_text = (
-            f"  [white]📦 Substituições na Fila (Prontas para atualizar o Excel):[/white] [bold bright_green]{len_sessao}[/bold bright_green]  \n"
-            f"  [white]🤖 Grupos de Conflito Pendentes:[/white] [bold bright_yellow]{pendentes_auto}[/bold bright_yellow]  "
+            f"  [white]Substituições Pendentes:[/white] [bold bright_green]{session_length}[/bold bright_green]  \n"
+            f"  [white]Conflitos a Resolver:[/white] [bold bright_yellow]{pending_count}[/bold bright_yellow]  "
         )
-        self.console.print(Align.center(Panel(status_text, title=f"[bold bright_white] DATA MERGE v7.1 - Modo {modo_nome} [/bold bright_white]", border_style=cor_modo, padding=(1, 2))))
+        self.console.print(Align.center(Panel(status_text, title=f"[bold bright_white] DATA MERGE v8.0 - {mode_name} [/bold bright_white]", border_style=color)))
         
-        self.console.print("\n")
-        opcoes = [
-            ("1", "🪄 Iniciar Assistente", "Inicia ou continua o tratamento automático de duplicados.", "bright_cyan"),
-            ("2", "🎯 Forçar Substituição Manual", "Substitui um ID antigo por um oficial (De ➜ Para).", "bright_cyan"),
-            ("3", "🔍 Pesquisar Registro (Raio-X)", "Consulta ONDE um registro está nas planilhas (Leitura).", "bright_yellow"),
-            ("4", "👻 Caçador de Órfãos", "Auditoria de IDs lançados nas lojas que NÃO existem na base.", "bright_magenta"),
-            ("5", "🗑️ Limpar Peso Morto", "Auditoria de itens cadastrados na base que NUNCA foram usados.", "bright_magenta"),
-            ("6", "🔗 Sincronizador Referencial", "Cruza Contas a Pagar x Notas e corrige as quebras.", "bright_blue"),
-            ("Z", "↩️ Desfazer Ação", "Desfaz a última substituição da sua sessão.", "bright_cyan"),
-            ("E", "🚀 Atualizar Planilhas do Excel", "Aplica todas as substituições nas movimentações LOCAIS.", "bright_green"),
-            ("Q", "🚪 Salvar e Sair", "Salva o progresso e encerra.", "bright_red")
+        options = [
+            ("1", "Resolução Automática", "Inicia o tratamento de duplicados.", "bright_cyan"),
+            ("2", "Substituição Manual", "Substitui um ID antigo por um oficial.", "bright_cyan"),
+            ("3", "Pesquisar Registro", "Consulta onde um registro está nas planilhas.", "bright_yellow"),
+            ("4", "Auditoria de Órfãos", "Auditoria de IDs lançados que não existem na base.", "bright_magenta"),
+            ("5", "Remoção de Inativos", "Auditoria de itens cadastrados nunca usados.", "bright_magenta"),
+            ("6", "Sincronização Referencial", "Cruza Contas a Pagar e Notas de Compra.", "bright_blue"),
+            ("Z", "Desfazer Ação", "Desfaz a última substituição.", "bright_cyan"),
+            ("E", "Atualizar Planilhas", "Aplica as substituições nas movimentações.", "bright_green"),
+            ("Q", "Salvar e Sair", "Salva o progresso e encerra.", "bright_red")
         ]
         
-        for tecla, titulo, desc, cor in opcoes:
-            if not tem_historico and tecla == "Z":
-                self.console.print(f"   [dim]> [ {tecla} ] {titulo}[/dim]\n           [dim]{desc} (Histórico Vazio)[/dim]\n")
+        self.console.print()
+        for key, title, desc, clr in options:
+            if not has_history and key == "Z":
+                self.console.print(f"   [dim]> [ {key} ] {title} - {desc} (Histórico Vazio)[/dim]")
             else:
-                self.console.print(f"   [bold {cor}]>[/bold {cor}] [bold bright_white][ {tecla} ][/bold bright_white] [bold {cor}]{titulo}[/bold {cor}]\n           [dim white]{desc}[/dim white]\n")
+                self.console.print(f"   [bold {clr}]>[/bold {clr}] [bold bright_white][ {key} ][/bold bright_white] [bold {clr}]{title}[/bold {clr}] - [dim white]{desc}[/dim white]")
                 
-        self.console.print("[dim]" + "─" * 85 + "[/dim]")
-        self.console.print("   [bold bright_cyan]>[/bold bright_cyan] [blink]Aguardando comando...[/blink] ", end="")
+        self.console.print(f"\n   [bold {color}]>[/bold {color}] [blink]Aguardando comando...[/blink] ", end="")
 
-    def menu_interativo_nativo(self, grupo, itens_pendentes, marcados, idx_grupo, total_grupos, total_migracoes, pode_desfazer):
-        self.limpar_tela()
+    def _clean_store_name(self, raw_name):
+        parts = raw_name.split(" | ")
+        if len(parts) == 3:
+            path, sheet, col = parts
+            store = os.path.basename(path).replace("Movimentações - ", "").replace("Contas a Pagar - ", "").strip()
+            return store, sheet, col
+        store = os.path.basename(raw_name).replace(".xlsx", "").strip()
+        return store, "-", "-"
+
+    def interactive_menu(self, group, pending_items, marked, current_idx, total_groups, total_migrations, can_undo):
+        self.clear_screen()
         cursor = 0
 
-        def render_layout(pos, marc):
-            progresso_txt = f"[bold bright_white]PROGRESSO:[/bold bright_white] Grupo {idx_grupo} de {total_grupos} | [bold bright_green]Substituições Salvas:[/bold bright_green] {total_migracoes}"
-            panel_progresso = Panel(Align.center(progresso_txt), border_style="dim white")
+        def render_layout(pos, sel_set):
+            table = Table(show_header=True, header_style="bold bright_magenta", box=box.ROUNDED, expand=True)
+            table.add_column("Sel", justify="center")
+            table.add_column("ID Antigo")
+            table.add_column("Ocorrências", justify="right")
+            table.add_column("Nome do Registro")
             
-            info_grupo = f"[bold bright_yellow]Motivo do Agrupamento:[/bold bright_yellow] {escape(grupo.motivo)}\n[bold bright_green]ID Oficial Sugerido:[/bold bright_green] {grupo.mestre.id} ({escape(grupo.mestre.nome)})"
-            panel_info = Panel(info_grupo, title=f"[bold bright_cyan]GRUPO DE CONFLITO: {escape(grupo.nome)}[/bold bright_cyan]", border_style="bright_cyan")
-            
-            table = Table(show_header=True, header_style="bold bright_magenta", box=box.ROUNDED, show_lines=True)
-            table.add_column("Sel", justify="center", vertical="middle")
-            table.add_column("ID Antigo", style="bright_yellow", vertical="middle")
-            table.add_column("Ocor.", justify="right", style="bright_green", vertical="middle")
-            table.add_column("Nome do Registro", style="bright_white", vertical="middle")
-            
-            for i, f in enumerate(itens_pendentes):
-                is_selected = f.id in marc
-                is_cursor = i == pos
+            for i, item in enumerate(pending_items):
+                is_sel = item.id in sel_set
+                is_cur = i == pos
+                prefix = "[bold bright_cyan]>[/] " if is_cur else "  "
+                box_char = "[bold bright_green][X][/]" if is_sel else "[dim][ ][/]"
+                style = "bold bright_white" if is_cur else ("bright_green" if is_sel else "white")
+                table.add_row(f"{prefix}{box_char}", f"[{style}]{item.id}[/]", f"[{style}]{item.transactions_count}[/]", f"[{style}]{escape(item.name)}[/]")
                 
-                sel_char = "[bold bright_green][ X ][/]" if is_selected else "[dim][   ][/]"
-                cursor_char = "[bold bright_cyan]➜[/] " if is_cursor else "  "
-                row_style = "bold bright_white" if is_cursor else "white"
-                if is_selected and not is_cursor: row_style = "bright_green"
-                
-                table.add_row(f"{cursor_char}{sel_char}", f"[{row_style}]{f.id}[/]", f"[{row_style}]{f.movimentacoes}[/]", f"[{row_style}]{escape(f.nome)}[/]")
-                
-            item_focado = itens_pendentes[pos]
-            if item_focado.movimentacoes > 0:
-                detalhes_table = Table(show_header=True, header_style="dim bright_cyan", box=box.SIMPLE_HEAD, expand=True)
-                detalhes_table.add_column("Loja", style="bright_white")
-                detalhes_table.add_column("Aba", style="bright_cyan")
-                detalhes_table.add_column("Coluna", style="bright_yellow")
-                detalhes_table.add_column("Qtd", justify="right", style="bold bright_green")
-
-                resumo_raiox = {}
-                for loc, qtd in item_focado.movimentacoes_por_loja.items():
-                    loja, aba, coluna = self._limpar_nome_loja(loc)
-                    chave = (loja, aba, coluna)
-                    resumo_raiox[chave] = resumo_raiox.get(chave, 0) + qtd
-
-                for (loja, aba, col), qtd in sorted(resumo_raiox.items()):
-                    detalhes_table.add_row(escape(loja), escape(aba), escape(col), str(qtd))
-                
-                panel_detalhes = Panel(detalhes_table, title=f"[bold bright_cyan]🔎 Raio-X do ID: {escape(item_focado.id)}[/]", border_style="bright_cyan")
-            else:
-                panel_detalhes = Panel("\n\n[dim white]Nenhuma ocorrência encontrada para este\nproduto nas abas permitidas.[/dim white]\n\n", title=f"[bold bright_cyan]🔎 Raio-X do ID: {escape(item_focado.id)}[/]", border_style="dim")
-
-            layout_duplo = Table.grid(expand=True)
-            layout_duplo.add_column(ratio=6)
-            layout_duplo.add_column(ratio=4)
-            layout_duplo.add_row(table, panel_detalhes)
-            
-            qtd = len(marc)
-            alvo_txt = f"nos {qtd} marcados" if qtd > 0 else "em TODOS"
-            
-            atalhos = (
-                f"[bold bright_white]ATALHOS DIRETOS (A ação será aplicada {alvo_txt}):[/bold bright_white]\n\n"
-                f" [bold bright_cyan][S][/bold bright_cyan] Substituir selecionados pelo ID Oficial Sugerido\n"
-                f" [bold bright_cyan][I][/bold bright_cyan] Informar ID / Pesquisar Manualmente (Escolher outro Oficial)\n"
-                f" [bold bright_cyan][T][/bold bright_cyan] Trazer outro(s) registro(s) para resolver neste grupo\n"
-                f" [bold bright_red][P][/bold bright_red] Pular / Manter Intacto\n\n"
-                f" [bold bright_yellow][Z][/bold bright_yellow] Desfazer última substituição{'' if pode_desfazer else ' [dim](Indisponível - Vazio)[/dim]'}\n"
-                f" [bold bright_yellow][V][/bold bright_yellow] Voltar para um Grupo Específico (Rollback){'' if pode_desfazer else ' [dim](Indisponível - Vazio)[/dim]'}\n"
-                f" [bold bright_magenta][Q][/bold bright_magenta] Pausar Sessão e Voltar ao Hub"
+            panel_info = Panel(
+                f"[bold bright_yellow]Motivo:[/bold bright_yellow] {escape(group.reason)}\n[bold bright_green]ID Oficial Sugerido:[/bold bright_green] {group.master.id} ({escape(group.master.name)})",
+                title=f"[bold bright_cyan]GRUPO DE CONFLITO: {escape(group.name)}[/bold bright_cyan]", border_style="bright_cyan"
             )
-            panel_atalhos = Panel(atalhos, border_style="dim white")
-
+            
+            shortcuts = "[S]ubstituir | [I]nformar Manual | [T]razer Outro | [P]ular | [Z]Desfazer | [V]oltar | [Q]Sair"
             return Group(
-                panel_progresso, panel_info,
-                Text(" NAVEGAÇÃO: Setas (Cima/Baixo) | SELEÇÃO (Marcar): [ENTER]\n", style="dim"),
-                layout_duplo,
-                panel_atalhos
+                Panel(Align.center(f"Progresso: Grupo {current_idx} de {total_groups} | Substituições: {total_migrations}"), border_style="dim white"),
+                panel_info, table, Panel(Align.center(shortcuts), border_style="dim white")
             )
 
-        with Live(render_layout(cursor, marcados), console=self.console, auto_refresh=False) as live:
+        with Live(render_layout(cursor, marked), console=self.console, auto_refresh=False) as live:
             while True:
-                if cursor >= len(itens_pendentes):
-                    cursor = max(0, len(itens_pendentes) - 1)
-                    live.update(render_layout(cursor, marcados), refresh=True)
+                if cursor >= len(pending_items): cursor = max(0, len(pending_items) - 1)
+                live.update(render_layout(cursor, marked), refresh=True)
+                key = msvcrt.getch()
+                if key in (b'\xe0', b'\x00'):
+                    arrow = msvcrt.getch()
+                    if arrow == b'H': cursor = max(0, cursor - 1)
+                    elif arrow == b'P': cursor = min(len(pending_items) - 1, cursor + 1)
+                elif key == b'\r':
+                    if pending_items:
+                        item_id = pending_items[cursor].id
+                        marked.remove(item_id) if item_id in marked else marked.add(item_id)
+                elif key.upper() in [b'S', b'I', b'T', b'P', b'Q']: return key.upper().decode('utf-8')
+                elif key.upper() in [b'Z', b'V'] and can_undo: return key.upper().decode('utf-8')
+                elif key == b'\x03': raise KeyboardInterrupt
 
-                tecla = msvcrt.getch()
-                if tecla in (b'\xe0', b'\x00'):
-                    seta = msvcrt.getch()
-                    if seta == b'H': cursor = max(0, cursor - 1)
-                    elif seta == b'P': cursor = min(len(itens_pendentes) - 1, cursor + 1)
-                    live.update(render_layout(cursor, marcados), refresh=True)
-                elif tecla == b'\r':
-                    if itens_pendentes:
-                        item_id = itens_pendentes[cursor].id
-                        if item_id in marcados: marcados.remove(item_id)
-                        else: marcados.add(item_id)
-                        live.update(render_layout(cursor, marcados), refresh=True)
-                elif tecla.upper() == b'S': return 'S'
-                elif tecla.upper() == b'I': return 'I'
-                elif tecla.upper() == b'T': return 'T'
-                elif tecla.upper() == b'P': return 'P'
-                elif tecla.upper() == b'Q': return 'Q'
-                elif tecla.upper() == b'Z' and pode_desfazer: return 'Z'
-                elif tecla.upper() == b'V' and pode_desfazer: return 'V'
-                elif tecla == b'\x03': raise KeyboardInterrupt
-
-    def menu_pesquisa_nativo(self, resultados, termo_busca, sessao_atual, ids_processados):
-        self.limpar_tela()
+    def search_menu(self, results, term, current_session, processed_ids, multi=False, pending_ids=None):
+        self.clear_screen()
         cursor = 0
-        opcoes = resultados + ["EXTERNO"]
+        marked = set()
+        options = results if multi else results + ["EXTERNO"]
 
-        def render_layout(pos):
-            table = Table(show_header=True, header_style="bold bright_magenta", box=box.ROUNDED, show_lines=True)
-            table.add_column("Sel", justify="center", vertical="middle")
-            table.add_column("Status Atual", vertical="middle")
-            table.add_column("ID", style="bright_yellow", vertical="middle")
-            table.add_column("Nome do Registro", vertical="middle")
-            table.add_column("Ocorrências", vertical="middle")
+        def render_layout(pos, sel_set):
+            table = Table(show_header=True, header_style="bold bright_magenta", box=box.ROUNDED, expand=True)
+            table.add_column("Sel" if multi else "->", justify="center")
+            table.add_column("Status")
+            table.add_column("ID")
+            table.add_column("Nome")
+            table.add_column("Ocorrências", justify="right")
 
-            for i, item in enumerate(opcoes):
-                is_cursor = i == pos
-                cursor_char = "[bold bright_cyan] ➜ [/bold bright_cyan]" if is_cursor else "   "
-                row_style = "bold bright_white" if is_cursor else "white"
+            for i, item in enumerate(options):
+                is_cur = i == pos
+                prefix = "[bold bright_cyan]>[/]" if is_cur else " "
                 
                 if item == "EXTERNO":
-                    table.add_row(cursor_char, "-", "-", f"[{row_style}]\\[ Usar '{escape(termo_busca)}' como um ID Externo / Não Cadastrado ][/]", "-")
+                    table.add_row(prefix, "-", "-", f"Usar '{escape(term)}' como ID Externo", "-")
                 else:
-                    status_tag = f"[{row_style}][dim white]INTACTO[/dim white][/]"
-                    if item.id in sessao_atual: status_tag = f"[bold red]SUBSTITUÍDO p/ {sessao_atual[item.id]}[/bold red]"
-                    elif item.id in ids_processados: status_tag = "[bold bright_yellow]PULADO[/bold bright_yellow]"
-                    elif hasattr(item, 'movimentacoes_originais') and item.movimentacoes > item.movimentacoes_originais:
-                        status_tag = f"[bold bright_green]HERDOU LINHAS[/bold bright_green]"
-                    elif item.movimentacoes == 0: status_tag = "[dim red]ZERADO[/dim red]"
+                    status = "[dim white]INTACTO[/]"
+                    if item.id in current_session: status = f"[bold red]SUBSTITUÍDO ({current_session[item.id]})[/]"
+                    elif item.id in processed_ids: status = "[bold yellow]PULADO[/]"
+                    
+                    sel = ""
+                    if multi:
+                        in_group = pending_ids and item.id in pending_ids
+                        if in_group: sel = "[dim blue][G][/]"
+                        elif item.id in sel_set: sel = "[bold green][X][/]"
+                        else: sel = "[dim][ ][/]"
+                        
+                    style = "bold white" if is_cur else ("bright_green" if item.id in sel_set else "white")
+                    table.add_row(f"{prefix} {sel}", status, f"[{style}]{item.id}[/]", f"[{style}]{escape(item.name)}[/]", f"[{style}]{item.transactions_count}[/]")
 
-                    table.add_row(cursor_char, status_tag, f"[{row_style}]{item.id}[/]", f"[{row_style}]{escape(item.nome)}[/]", f"[{row_style}]{item.movimentacoes}[/]")
-
+            title = f"PESQUISA MÚLTIPLA" if multi else "PESQUISA DE ID OFICIAL"
+            footer = "ENTER: Marcar | C: Confirmar | ESC: Cancelar" if multi else "ENTER: Selecionar | ESC: Cancelar"
             return Group(
-                Panel(f"[bold bright_cyan]PESQUISA DE ID OFICIAL:[/bold bright_cyan] [bright_white]'{escape(termo_busca)}'[/bright_white]", border_style="bright_cyan"),
-                Text(" NAVEGAÇÃO: Setas (Cima/Baixo) | SELEÇÃO: [ENTER] | CANCELAR: [ESC]\n", style="dim"),
-                table
+                Panel(f"[bold bright_cyan]{title}:[/bold bright_cyan] '{escape(term)}'", border_style="bright_cyan"),
+                table, Align.center(f"[dim]{footer}[/dim]")
             )
 
-        with Live(render_layout(cursor), console=self.console, auto_refresh=False) as live:
+        with Live(render_layout(cursor, marked), console=self.console, auto_refresh=False) as live:
             while True:
-                tecla = msvcrt.getch()
-                if tecla in (b'\xe0', b'\x00'):
-                    seta = msvcrt.getch()
-                    if seta == b'H': cursor = max(0, cursor - 1)
-                    elif seta == b'P': cursor = min(len(opcoes) - 1, cursor + 1)
-                    live.update(render_layout(cursor), refresh=True)
-                elif tecla == b'\r': return opcoes[cursor]
-                elif tecla == b'\x1b': return None
-                elif tecla == b'\x03': raise KeyboardInterrupt
+                live.update(render_layout(cursor, marked), refresh=True)
+                key = msvcrt.getch()
+                if key in (b'\xe0', b'\x00'):
+                    arrow = msvcrt.getch()
+                    if arrow == b'H': cursor = max(0, cursor - 1)
+                    elif arrow == b'P': cursor = min(len(options) - 1, cursor + 1)
+                elif key == b'\r': 
+                    if multi:
+                        item_id = options[cursor].id
+                        if not pending_ids or item_id not in pending_ids:
+                            marked.remove(item_id) if item_id in marked else marked.add(item_id)
+                    else: return options[cursor]
+                elif multi and key.upper() == b'C': return [r for r in results if r.id in marked]
+                elif key == b'\x1b': return [] if multi else None
+                elif key == b'\x03': raise KeyboardInterrupt
 
-    def menu_pesquisa_multi(self, resultados, termo_busca, sessao_atual, ids_processados, pendentes_ids):
-        self.limpar_tela()
-        cursor = 0
-        marcados = set()
-
-        def render_layout(pos, marc):
-            table = Table(show_header=True, header_style="bold bright_magenta", box=box.ROUNDED, show_lines=True)
-            table.add_column("Sel", justify="center", vertical="middle")
-            table.add_column("Status Atual", vertical="middle")
-            table.add_column("ID", style="bright_yellow", vertical="middle")
-            table.add_column("Nome do Registro", vertical="middle")
-            table.add_column("Ocorrências", vertical="middle")
-
-            for i, item in enumerate(resultados):
-                is_cursor = i == pos
-                is_selected = item.id in marc
-                in_group = item.id in pendentes_ids
-                
-                cursor_char = "[bold bright_cyan] ➜ [/bold bright_cyan]" if is_cursor else "   "
-                row_style = "bold bright_white" if is_cursor else "white"
-                if is_selected and not is_cursor: row_style = "bright_green"
-                
-                sel_char = "[dim][   ][/]"
-                if in_group: sel_char = "[dim bright_blue][ G ][/]"
-                elif is_selected: sel_char = "[bold bright_green][ X ][/]"
-                
-                status_tag = f"[{row_style}][dim white]INTACTO[/dim white][/]"
-                if item.id in sessao_atual: status_tag = f"[bold red]SUBSTITUÍDO p/ {sessao_atual[item.id]}[/bold red]"
-                elif item.id in ids_processados: status_tag = "[bold bright_yellow]PULADO[/bold bright_yellow]"
-                elif hasattr(item, 'movimentacoes_originais') and item.movimentacoes > item.movimentacoes_originais:
-                    status_tag = f"[bold bright_green]HERDOU LINHAS[/bold bright_green]"
-                elif item.movimentacoes == 0: status_tag = "[dim red]ZERADO[/dim red]"
-
-                table.add_row(f"{cursor_char}{sel_char}", status_tag, f"[{row_style}]{item.id}[/]", f"[{row_style}]{escape(item.nome)}[/]", f"[{row_style}]{item.movimentacoes}[/]")
-
-            return Group(
-                Panel(f"[bold bright_cyan]PESQUISA MÚLTIPLA:[/bold bright_cyan] [bright_white]'{escape(termo_busca)}'[/bright_white]", border_style="bright_cyan"),
-                Text(" NAVEGAÇÃO: Setas (Cima/Baixo) | MARCAR: [ENTER] | CONFIRMAR SELEÇÃO: [C] | CANCELAR: [ESC]\n", style="dim"),
-                table,
-                Text(f"\n Selecionados: {len(marc)} (Pressione C para confirmar)", style="bold bright_green")
-            )
-
-        with Live(render_layout(cursor, marcados), console=self.console, auto_refresh=False) as live:
-            while True:
-                tecla = msvcrt.getch()
-                if tecla in (b'\xe0', b'\x00'):
-                    seta = msvcrt.getch()
-                    if seta == b'H': cursor = max(0, cursor - 1)
-                    elif seta == b'P': cursor = min(len(resultados) - 1, cursor + 1)
-                    live.update(render_layout(cursor, marcados), refresh=True)
-                elif tecla == b'\r': 
-                    item_id = resultados[cursor].id
-                    if item_id not in pendentes_ids:
-                        if item_id in marcados: marcados.remove(item_id)
-                        else: marcados.add(item_id)
-                    live.update(render_layout(cursor, marcados), refresh=True)
-                elif tecla.upper() == b'C': return [r for r in resultados if r.id in marcados]
-                elif tecla == b'\x1b': return []
-                elif tecla == b'\x03': raise KeyboardInterrupt
-
-    def exibir_confirmacao_migracao(self, alvos, dest_id, nome_dest, dest_forn, modo_nome):
-        self.limpar_tela()
-        self.console.print(Panel("[bold bright_cyan]REVISÃO DE IMPACTO (SUBSTITUIÇÃO DE IDs)[/bold bright_cyan]", border_style="bright_cyan"))
+    def confirm_migration(self, targets, dest_id, dest_name, dest_entity, mode_name):
+        self.clear_screen()
+        total_moved = sum(t.transactions_count for t in targets if t.id != dest_id)
+        current = dest_entity.transactions_count if dest_entity else 0
         
-        t_origem = Table(title=f"\n[bold bright_red]IDs ANTIGOS ({modo_nome}) QUE SERÃO SUBSTITUÍDOS[/bold bright_red]", show_header=True, header_style="bold bright_red", box=box.ROUNDED, expand=True, show_lines=True)
-        t_origem.add_column("ID Antigo", style="bright_yellow", vertical="middle")
-        t_origem.add_column("Nome Descontinuado", style="bright_white", vertical="middle")
-        t_origem.add_column("Linhas Afetadas", style="bold red", justify="center", vertical="middle")
-        t_origem.add_column("Impacto Agrupado", style="white", vertical="middle")
+        self.console.print(Panel(
+            f"[bold white]ID DESTINO:[/bold white] [bright_yellow]{dest_id}[/bright_yellow] - {escape(dest_name)}\n"
+            f"[bold white]Impacto:[/bold white] {current} -> [bold bright_green]{current + total_moved}[/bold bright_green] ocorrências.\n\n"
+            f"[dim]ENTER para confirmar | ESC para cancelar[/dim]", 
+            title="REVISÃO DE IMPACTO", border_style="bright_cyan"
+        ))
         
-        total_movido = 0
-        resumo_lojas = {}
-        
-        for f in alvos:
-            if f.id == dest_id: continue
-            
-            texto_loc = self._formatar_localizacao_agrupada(f.movimentacoes_por_loja)
-            
-            for loja_raw, qtd in f.movimentacoes_por_loja.items():
-                loja, aba, coluna = self._limpar_nome_loja(loja_raw)
-                resumo_lojas[loja] = resumo_lojas.get(loja, 0) + qtd
-                
-            t_origem.add_row(f.id, escape(f.nome), str(f.movimentacoes), texto_loc)
-            total_movido += f.movimentacoes
-            
-        self.console.print(t_origem)
-        
-        qtd_atual = dest_forn.movimentacoes if dest_forn else 0
-        qtd_final = qtd_atual + total_movido
-        resumo_str_list = [f"[bold white]{qtd}[/bold white] em {loja}" for loja, qtd in resumo_lojas.items()]
-        resumo_texto = ", ".join(resumo_str_list) if resumo_str_list else "Nenhuma linha alterada"
-        
-        dest_panel = (
-            f"  [bold bright_white]NOVO ID (QUE ASSUMIRÁ AS LINHAS):[/bold bright_white] [bright_yellow]{dest_id}[/bright_yellow]\n"
-            f"  [bold bright_white]NOME CORRETO:[/bold bright_white] {escape(nome_dest)}\n\n"
-            f"  [dim]Linhas atuais com este ID:[/dim] {qtd_atual}\n"
-            f"  [bold bright_green]LINHAS APÓS SUBSTITUIÇÃO:[/bold bright_green] [bold white]{qtd_final}[/bold white] [bold bright_green](+{total_movido} atualizadas)[/bold bright_green]\n\n"
-            f"  [bold bright_magenta]RESUMO DA AÇÃO:[/bold bright_magenta] O novo ID será injetado em: {resumo_texto}."
-        )
-        self.console.print(Panel(dest_panel, title=f"[bold bright_green]REGISTRO DESTINO (ID OFICIAL DO {modo_nome})[/bold bright_green]", border_style="bright_green"))
-        
-        self.console.print("\n[bold bright_white] Pressione [ENTER] para Confirmar a Substituição ou [ESC] para Cancelar... [/bold bright_white]", end="")
         while True:
-            t = msvcrt.getch()
-            if t == b'\r': return True
-            if t == b'\x1b': return False
+            k = msvcrt.getch()
+            if k == b'\r': return True
+            if k == b'\x1b': return False
 
-    def menu_raiox_dinamico(self, resultados, termo_busca, modo_nome):
-        self.limpar_tela()
+    def dynamic_xray_menu(self, results, term, mode_name):
+        self.clear_screen()
         cursor = 0
 
         def render_layout(pos):
-            # Painel da Esquerda: Lista de Resultados
-            table_list = Table(show_header=True, header_style="bold bright_yellow", box=box.ROUNDED, show_lines=True)
-            table_list.add_column("Sel", justify="center", vertical="middle")
-            table_list.add_column("ID", style="bright_white", vertical="middle")
-            table_list.add_column("Nome", style="white", vertical="middle")
+            table = Table(show_header=True, header_style="bold yellow", box=box.ROUNDED, expand=True)
+            table.add_column("->")
+            table.add_column("ID")
+            table.add_column("Nome")
+            table.add_column("Ocorrências", justify="right")
             
-            for i, item in enumerate(resultados):
-                is_cursor = i == pos
-                cursor_char = "[bold bright_cyan]➜[/]" if is_cursor else "  "
-                row_style = "bold bright_white" if is_cursor else "dim white"
-                
-                table_list.add_row(
-                    cursor_char, 
-                    f"[{row_style}]{item.id}[/]", 
-                    f"[{row_style}]{escape(item.nome)}[/]"
-                )
+            for i, item in enumerate(results):
+                prefix = "[bold cyan]>[/]" if i == pos else " "
+                style = "bold white" if i == pos else "dim white"
+                table.add_row(prefix, f"[{style}]{item.id}[/]", f"[{style}]{escape(item.name)}[/]", str(item.transactions_count))
 
-            # Painel da Direita: Raio-X Dinâmico (Atualiza sozinho)
-            alvo = resultados[pos]
-            if alvo.movimentacoes > 0:
-                t_raiox = Table(show_header=True, header_style="dim bright_cyan", box=box.SIMPLE_HEAD, expand=True)
-                t_raiox.add_column("Loja", style="bright_white")
-                t_raiox.add_column("Aba", style="bright_cyan")
-                t_raiox.add_column("Coluna", style="bright_yellow")
-                t_raiox.add_column("Qtd", justify="right", style="bold bright_green")
-                
-                resumo_raiox = {}
-                for loc_raw, qtd in alvo.movimentacoes_por_loja.items():
-                    loja, aba, coluna = self._limpar_nome_loja(loc_raw)
-                    chave = (loja, aba, coluna)
-                    resumo_raiox[chave] = resumo_raiox.get(chave, 0) + qtd
-
-                for (loja, aba, col), qtd in sorted(resumo_raiox.items()):
-                    t_raiox.add_row(escape(loja), escape(aba), escape(col), str(qtd))
-                    
-                panel_detalhes = Panel(t_raiox, title=f"[bold bright_cyan]🔎 Raio-X: {alvo.id} ({alvo.movimentacoes} itens)[/]", border_style="bright_cyan")
+            target = results[pos]
+            details = Table(show_header=True, header_style="dim cyan", box=box.SIMPLE_HEAD, expand=True)
+            details.add_column("Loja")
+            details.add_column("Aba")
+            details.add_column("Coluna")
+            details.add_column("Qtd", justify="right")
+            
+            if target.transactions_count > 0:
+                summary = {}
+                for loc, qty in target.transactions_by_store.items():
+                    s, a, c = self._clean_store_name(loc)
+                    summary[(s,a,c)] = summary.get((s,a,c), 0) + qty
+                for (s, a, c), qty in sorted(summary.items()):
+                    details.add_row(escape(s), escape(a), escape(c), str(qty))
             else:
-                panel_detalhes = Panel("\n\n[dim white]Nenhuma ocorrência encontrada nas planilhas.[/dim white]\n\n", title=f"[bold bright_cyan]🔎 Raio-X: {alvo.id}[/]", border_style="dim")
+                details.add_row("Sem dados", "-", "-", "0")
 
-            layout_duplo = Table.grid(expand=True)
-            layout_duplo.add_column(ratio=5)
-            layout_duplo.add_column(ratio=5)
-            layout_duplo.add_row(table_list, panel_detalhes)
-            
-            atalhos = "[bold bright_cyan][ I ][/bold bright_cyan] Pesquisar Outro ID | [bold red][ ESC ][/bold red] Voltar ao Menu Principal"
-            
-            return Group(
-                Panel(f"[bold bright_yellow]🔍 RESULTADOS PARA:[/bold bright_yellow] '{escape(termo_busca)}'", border_style="bright_yellow"),
-                Text(" NAVEGAÇÃO: Setas (Cima/Baixo)\n", style="dim"),
-                layout_duplo,
-                Align.center(atalhos)
-            )
+            layout = Table.grid(expand=True)
+            layout.add_column(ratio=5)
+            layout.add_column(ratio=5)
+            layout.add_row(table, Panel(details, title="Detalhes do ID", border_style="cyan"))
+
+            return Group(Panel(f"RESULTADOS PARA: '{escape(term)}'", border_style="yellow"), layout, Align.center("[I] Pesquisar Novo | [ESC] Sair"))
 
         with Live(render_layout(cursor), console=self.console, auto_refresh=False) as live:
             while True:
-                tecla = msvcrt.getch()
-                if tecla in (b'\xe0', b'\x00'):
-                    seta = msvcrt.getch()
-                    if seta == b'H': cursor = max(0, cursor - 1)
-                    elif seta == b'P': cursor = min(len(resultados) - 1, cursor + 1)
-                    live.update(render_layout(cursor), refresh=True)
-                elif tecla.upper() == b'I': return 'I'
-                elif tecla == b'\x1b' or tecla == b'\x08': return 'ESC' # ESC e Backspace voltam ao menu
-                elif tecla == b'\x03': raise KeyboardInterrupt
+                live.update(render_layout(cursor), refresh=True)
+                k = msvcrt.getch()
+                if k in (b'\xe0', b'\x00'):
+                    arr = msvcrt.getch()
+                    if arr == b'H': cursor = max(0, cursor - 1)
+                    elif arr == b'P': cursor = min(len(results) - 1, cursor + 1)
+                elif k.upper() == b'I': return 'I'
+                elif k in (b'\x1b', b'\x08'): return 'ESC'
+                elif k == b'\x03': raise KeyboardInterrupt
 
-    def paginar_orfaos(self, orfaos_ordenados, modo_nome):
-        total_geral_linhas = sum(sum(locs.values()) for _, locs in orfaos_ordenados)
-        tamanho_pagina = 10
-        total_paginas = (len(orfaos_ordenados) + tamanho_pagina - 1) // tamanho_pagina
-        pagina_atual = 0
+    def paginate_orphans(self, orphans, mode_name):
+        page = 0
+        size = 15
+        pages = max(1, (len(orphans) + size - 1) // size)
         
         while True:
-            self.limpar_tela()
-            self.console.print(Panel(f"[bold bright_magenta]👻 CAÇADOR DE ÓRFÃOS ({modo_nome}S FANTASMAS)[/bold bright_magenta]", border_style="bright_magenta"))
+            self.clear_screen()
+            self.console.print(Panel(f"AUDITORIA DE ÓRFÃOS", border_style="magenta"))
             
-            t_orfaos = Table(show_header=True, header_style="bold bright_magenta", box=box.ROUNDED, expand=True, show_lines=True)
-            t_orfaos.add_column("ID Fantasma", style="bold bright_yellow", vertical="middle")
-            t_orfaos.add_column("Qtd", justify="center", style="bold bright_red", vertical="middle")
-            t_orfaos.add_column("📍 Onde encontrar (Agrupado por Loja)", style="white", vertical="middle")
+            t = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED, expand=True)
+            t.add_column("ID Órfão", style="yellow")
+            t.add_column("Ocorrências", justify="right")
             
-            inicio = pagina_atual * tamanho_pagina
-            fim = inicio + tamanho_pagina
-            
-            for orf_id, locs in orfaos_ordenados[inicio:fim]:
-                total_loc = sum(locs.values())
-                texto_loc = self._formatar_localizacao_agrupada(locs)
-                t_orfaos.add_row(escape(str(orf_id)), str(total_loc), texto_loc)
+            for o_id, locs in orphans[page*size : (page+1)*size]:
+                t.add_row(escape(str(o_id)), str(sum(locs.values())))
                 
-            self.console.print(t_orfaos)
+            self.console.print(t)
+            self.console.print(f"Página {page+1} de {pages} | Total: {len(orphans)} órfãos\n")
+            self.console.print("[N] Próximo | [A] Anterior | [E] Exportar TXT | [Q] Voltar")
             
-            self.console.print(f"\n[bold bright_red]Resumo Geral:[/bold bright_red] {len(orfaos_ordenados)} IDs não cadastrados no total (Impactando {total_geral_linhas} linhas).")
-            self.console.print(f"[bold bright_cyan]Exibindo grupo {pagina_atual + 1} de {total_paginas}[/bold bright_cyan]\n")
-            
-            opcoes_rodape = []
-            if pagina_atual < total_paginas - 1:
-                opcoes_rodape.append("[bold bright_white][N][/bold bright_white] Próximo Grupo")
-            if pagina_atual > 0:
-                opcoes_rodape.append("[bold bright_white][A][/bold bright_white] Grupo Anterior")
-            opcoes_rodape.append("[bold bright_white][E][/bold bright_white] Exportar Relatório .txt")
-            opcoes_rodape.append("[bold bright_white][Q][/bold bright_white] Voltar ao Menu")
-            
-            self.console.print(" | ".join(opcoes_rodape))
-            
-            t_acao = msvcrt.getch().upper()
-            
-            if (t_acao == b'N' or t_acao == b'P') and pagina_atual < total_paginas - 1:
-                pagina_atual += 1
-            elif (t_acao == b'A' or t_acao == b'V') and pagina_atual > 0:
-                pagina_atual -= 1
-            elif t_acao == b'E':
-                with open("RELATORIO_ORFAOS.txt", "w", encoding="utf-8") as f_out:
-                    f_out.write(f"=== RELATORIO DE {modo_nome}S ORFAOS (FANTASMAS) ===\n")
-                    f_out.write("Estes IDs foram lancados nas lojas, mas NAO existem na base oficial:\n\n")
-                    for orf_id, locs in orfaos_ordenados:
-                        f_out.write(f"ID FANTASMA: {orf_id} (Aparece {sum(locs.values())} vezes)\n")
-                        for loc_raw, qtd in locs.items():
-                            loja, aba, coluna = self._limpar_nome_loja(loc_raw)
-                            f_out.write(f"  -> Loja: {loja} | Aba: {aba} | Coluna: {coluna} | Quantidade: {qtd}\n")
-                        f_out.write("-" * 50 + "\n")
-                utils_console.sucesso("\nRelatório exportado com sucesso: RELATORIO_ORFAOS.txt")
-                time.sleep(2)
-            elif t_acao == b'Q' or t_acao == b'\x1b':
-                break
+            k = msvcrt.getch().upper()
+            if k in (b'N', b'P') and page < pages - 1: page += 1
+            elif k in (b'A', b'V') and page > 0: page -= 1
+            elif k == b'E':
+                with open("RELATORIO_ORFAOS.txt", "w", encoding="utf-8") as f:
+                    for o_id, locs in orphans: f.write(f"{o_id}: {sum(locs.values())} ocorrencias\n")
+                utils_console.print_success("Relatório salvo.")
+                time.sleep(1)
+            elif k in (b'Q', b'\x1b'): break
 
-    def paginar_inativos(self, inativos, modo_nome):
-        tamanho_pagina = 10
-        total_paginas = (len(inativos) + tamanho_pagina - 1) // tamanho_pagina
-        pagina_atual = 0
+    def paginate_inactives(self, inactives, mode_name):
+        page = 0
+        size = 15
+        pages = max(1, (len(inactives) + size - 1) // size)
         
         while True:
-            self.limpar_tela()
-            self.console.print(Panel(f"[bold bright_magenta]🗑️ LIMPEZA DE PESO MORTO ({modo_nome}S INATIVOS)[/bold bright_magenta]", border_style="bright_magenta"))
+            self.clear_screen()
+            self.console.print(Panel("REMOÇÃO DE INATIVOS", border_style="magenta"))
             
-            t_inativos = Table(show_header=True, header_style="bold bright_magenta", box=box.ROUNDED, expand=True, show_lines=True)
-            t_inativos.add_column("ID Oficial", style="bright_yellow", vertical="middle")
-            t_inativos.add_column("Nome do Registro", style="bright_white", vertical="middle")
+            t = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED, expand=True)
+            t.add_column("ID Oficial", style="yellow")
+            t.add_column("Nome", style="white")
             
-            inicio = pagina_atual * tamanho_pagina
-            fim = inicio + tamanho_pagina
-            
-            for inativo in inativos[inicio:fim]:
-                t_inativos.add_row(escape(inativo.id), escape(inativo.nome))
+            for item in inactives[page*size : (page+1)*size]:
+                t.add_row(escape(item.id), escape(item.name))
                 
-            self.console.print(t_inativos)
+            self.console.print(t)
+            self.console.print(f"Página {page+1} de {pages} | Total: {len(inactives)} inativos\n")
+            self.console.print("[N] Próximo | [A] Anterior | [E] Exportar TXT | [Q] Voltar")
             
-            self.console.print(f"\n[bold bright_yellow]Resumo Geral:[/bold bright_yellow] Foram encontrados {len(inativos)} registros com ZERO compras no sistema.")
-            self.console.print(f"[bold bright_cyan]Exibindo grupo {pagina_atual + 1} de {total_paginas}[/bold bright_cyan]\n")
-            
-            opcoes_rodape = []
-            if pagina_atual < total_paginas - 1:
-                opcoes_rodape.append("[bold bright_white][N][/bold bright_white] Próximo Grupo")
-            if pagina_atual > 0:
-                opcoes_rodape.append("[bold bright_white][A][/bold bright_white] Grupo Anterior")
-            opcoes_rodape.append("[bold bright_white][E][/bold bright_white] Exportar Relatório .txt")
-            opcoes_rodape.append("[bold bright_white][Q][/bold bright_white] Voltar ao Menu")
-            
-            self.console.print(" | ".join(opcoes_rodape))
-            
-            t_acao = msvcrt.getch().upper()
-            
-            if (t_acao == b'N' or t_acao == b'P') and pagina_atual < total_paginas - 1:
-                pagina_atual += 1
-            elif (t_acao == b'A' or t_acao == b'V') and pagina_atual > 0:
-                pagina_atual -= 1
-            elif t_acao == b'E':
-                with open("RELATORIO_PESO_MORTO.txt", "w", encoding="utf-8") as f_out:
-                    f_out.write(f"=== RELATORIO DE {modo_nome}S INATIVOS (PESO MORTO) ===\n")
-                    f_out.write("Estes registros existem na base oficial, mas NUNCA foram usados em nenhuma loja:\n\n")
-                    for inativo in inativos:
-                        f_out.write(f"ID: {inativo.id} | Nome: {inativo.nome}\n")
-                utils_console.sucesso("\nRelatório exportado com sucesso: RELATORIO_PESO_MORTO.txt")
-                time.sleep(2)
-            elif t_acao == b'Q' or t_acao == b'\x1b':
-                break
+            k = msvcrt.getch().upper()
+            if k in (b'N', b'P') and page < pages - 1: page += 1
+            elif k in (b'A', b'V') and page > 0: page -= 1
+            elif k == b'E':
+                with open("RELATORIO_INATIVOS.txt", "w", encoding="utf-8") as f:
+                    for item in inactives: f.write(f"{item.id} - {item.name}\n")
+                utils_console.print_success("Relatório salvo.")
+                time.sleep(1)
+            elif k in (b'Q', b'\x1b'): break
 
-    def desenhar_tabela_cruzada(self, conflito):
-        t_cruzamento = Table(show_header=True, header_style="bold white", box=box.ROUNDED, expand=True)
-        t_cruzamento.add_column("Onde", style="bright_cyan")
-        t_cruzamento.add_column("📍 Localização Exata", style="white")
-        t_cruzamento.add_column("Status do Fornecedor", justify="center")
-        t_cruzamento.add_column("ID Lançado", style="bright_yellow")
+    def paginate_conflicts(self, conflicts, page):
+        size = 10
+        pages = max(1, (len(conflicts) + size - 1) // size)
+        self.clear_screen()
         
-        def cor_st(st):
-            if st == "OFICIAL": return "[bold bright_green]✅ OFICIAL[/]"
-            if st == "VAZIO": return "[dim white]🕳️ VAZIO[/]"
-            return "[bold red]👻 FANTASMA[/]"
+        t = Table(show_header=True, header_style="bold blue", box=box.ROUNDED, expand=True)
+        t.add_column("Nota", style="yellow")
+        t.add_column("Contas a Pagar")
+        t.add_column("Notas de Compra")
+        t.add_column("Ação Sugerida", style="green")
+        
+        for c in conflicts[page*size : (page+1)*size]:
+            t.add_row(escape(str(c['transaction_id'])), escape(c['bill']['val']), escape(c['invoice']['val']), escape(str(c['suggestion_id'] or "Manual")))
             
-        loc_conta = f"{os.path.basename(conflito['conta']['arquivo']).replace('.xlsx', '')} ➜ {escape(conflito['conta']['aba'])} (Linha {conflito['conta']['row']})"
-        loc_nota = f"{os.path.basename(conflito['nota']['arquivo']).replace('.xlsx', '')} ➜ {escape(conflito['nota']['aba'])} (Linha {conflito['nota']['row']})"
-            
-        t_cruzamento.add_row("Contas a Pagar", loc_conta, cor_st(conflito['st_c']), escape(conflito['conta']['val'] or "---"))
-        t_cruzamento.add_row("Nota de Compra", loc_nota, cor_st(conflito['st_n']), escape(conflito['nota']['val'] or "---"))
-        
-        self.console.print(t_cruzamento)
-
-    def paginar_conflitos(self, conflitos, pagina_atual):
-        tamanho_pagina = 10
-        total_paginas = max(1, (len(conflitos) + tamanho_pagina - 1) // tamanho_pagina)
-        
-        self.limpar_tela()
-        self.console.print(Panel("[bold bright_blue]🔗 CAÇADOR DE QUEBRAS REFERENCIAIS (Contas x Notas)[/bold bright_blue]", border_style="bright_blue"))
-        
-        t_conflitos = Table(show_header=True, header_style="bold bright_blue", box=box.ROUNDED, expand=True, show_lines=True)
-        t_conflitos.add_column("Loja (Arquivo)", style="bright_cyan", vertical="middle")
-        t_conflitos.add_column("Nº Nota", justify="center", style="bold bright_yellow", vertical="middle")
-        t_conflitos.add_column("ID Contas a Pagar", style="white", vertical="middle")
-        t_conflitos.add_column("ID Nota Compra", style="white", vertical="middle")
-        t_conflitos.add_column("Ação Sugerida", style="bold bright_green", vertical="middle")
-        
-        inicio = pagina_atual * tamanho_pagina
-        fim = inicio + tamanho_pagina
-        conflitos_pagina = conflitos[inicio:fim]
-        
-        def formatar_status(val, st):
-            v = escape(val) if val else "---"
-            if st == "OFICIAL": return f"{v} [bold bright_green](OFICIAL)[/]"
-            if st == "VAZIO": return f"{v} [dim white](VAZIO)[/]"
-            return f"{v} [bold red](FANTASMA)[/]"
-            
-        for c in conflitos_pagina:
-            loja = self._limpar_nome_loja(c['conta']['arquivo'])[0]
-            n_nota = str(c['id_nota'])
-            st_c = formatar_status(c['conta']['val'], c['st_c'])
-            st_n = formatar_status(c['nota']['val'], c['st_n'])
-            sugestao = f"Espelhar ID: {c['sugestao_id']}" if c['sugestao_id'] else "[bold red]Requer Manual[/]"
-            
-            t_conflitos.add_row(escape(loja), escape(n_nota), st_c, st_n, sugestao)
-            
-        self.console.print(t_conflitos)
-        
-        self.console.print(f"\n[bold bright_yellow]Resumo Geral:[/bold bright_yellow] Foram encontradas {len(conflitos)} notas com quebra de integridade.")
-        self.console.print(f"[bold bright_cyan]Exibindo grupo {pagina_atual + 1} de {total_paginas}[/bold bright_cyan]\n")
-        
-        opcoes_rodape = []
-        if pagina_atual < total_paginas - 1:
-            opcoes_rodape.append("[bold bright_white][N][/bold bright_white] Próximo Grupo")
-        if pagina_atual > 0:
-            opcoes_rodape.append("[bold bright_white][A][/bold bright_white] Grupo Anterior")
-        
-        opcoes_rodape.append("[bold bright_green][R][/bold bright_green] Resolver as notas desta Tela")
-        opcoes_rodape.append("[bold bright_white][E][/bold bright_white] Exportar Relatório .txt")
-        opcoes_rodape.append("[bold bright_white][Q][/bold bright_white] Voltar ao Menu")
-        
-        self.console.print(" | ".join(opcoes_rodape))
+        self.console.print(Panel("INTEGRIDADE REFERENCIAL", border_style="blue"))
+        self.console.print(t)
+        self.console.print(f"Página {page+1} de {pages} | Total: {len(conflicts)}\n")
+        self.console.print("[N] Próximo | [A] Anterior | [R] Resolver | [E] Exportar | [Q] Voltar")
         
         while True:
-            t_acao = msvcrt.getch().upper()
-            if t_acao in [b'N', b'P'] and pagina_atual < total_paginas - 1: return 'PROXIMO'
-            elif t_acao in [b'A', b'V'] and pagina_atual > 0: return 'ANTERIOR'
-            elif t_acao == b'R': return 'RESOLVER'
-            elif t_acao == b'E': return 'EXPORTAR'
-            elif t_acao in [b'Q', b'\x1b']: return 'SAIR'
+            k = msvcrt.getch().upper()
+            if k in (b'N', b'P') and page < pages - 1: return 'NEXT'
+            elif k in (b'A', b'V') and page > 0: return 'PREV'
+            elif k == b'R': return 'RESOLVE'
+            elif k == b'E': return 'EXPORT'
+            elif k in (b'Q', b'\x1b'): return 'EXIT'
 
-    def exibir_erro_critico(self, traceback_msg):
-        self.limpar_tela()
-        self.console.print(Panel(f"[bold bright_red]ERRO CRÍTICO NA INICIALIZAÇÃO[/bold bright_red]", border_style="red"))
-        self.console.print(f"[white]Verifique se a internet está conectada, se o link no config.py está correto ou se o credentials.json está na pasta.[/white]\n\n[dim]Detalhe do erro:\n{traceback_msg}[/dim]")
+    def show_critical_error(self, traceback_msg):
+        self.clear_screen()
+        self.console.print(Panel(f"ERRO CRÍTICO\n{traceback_msg}", border_style="red"))
 
-    # ==========================================
-    # HELPERS INTERNOS DE TEXTO
-    # ==========================================
-    def _limpar_nome_loja(self, nome_bruto):
-        partes = nome_bruto.split(" | ")
-        if len(partes) == 3:
-            caminho, aba, coluna = partes
-            loja = os.path.basename(caminho).replace("Movimentações - ", "").replace("Contas a Pagar - ", "").strip()
-            return loja, aba, coluna
-        loja = os.path.basename(nome_bruto).replace(".xlsx", "").strip()
-        return loja, "-", "-"
-
-    def _formatar_localizacao_agrupada(self, movimentacoes_dict):
-        if not movimentacoes_dict: return "-"
-        
-        resumo = {}
-        for loc_raw, qtd in movimentacoes_dict.items():
-            loja, aba, coluna = self._limpar_nome_loja(loc_raw)
-            if loja not in resumo: resumo[loja] = {'total': 0, 'abas': {}, 'colunas': {}}
-            resumo[loja]['abas'][aba] = resumo[loja]['abas'].get(aba, 0) + qtd
-            col_nome = coluna if coluna and coluna != "-" else "Desconhecida"
-            resumo[loja]['colunas'][col_nome] = resumo[loja]['colunas'].get(col_nome, 0) + qtd
-            resumo[loja]['total'] += qtd
-            
-        blocos = []
-        lojas_ordenadas = sorted(resumo.items(), key=lambda x: x[1]['total'], reverse=True)
-        
-        for loja, dados in lojas_ordenadas:
-            linhas_loja = []
-            linhas_loja.append(f"[bold bright_cyan]Loja:[/] [white]{escape(loja)}[/]")
-            linhas_loja.append(f"[bold bright_green]Quantidade total:[/] [white]{dados['total']}[/]")
-            abas_str = ", ".join([f"{escape(aba)} ({qtd})" for aba, qtd in dados['abas'].items()])
-            linhas_loja.append(f"[bold bright_magenta]Abas:[/] [white]{abas_str}[/]")
-            colunas_str = ", ".join([f"{escape(col)} ({qtd})" for col, qtd in dados['colunas'].items()])
-            linhas_loja.append(f"[bold bright_yellow]Colunas:[/] [white]{colunas_str}[/]")
-            blocos.append("\n".join(linhas_loja))
-                
-        return "\n\n".join(blocos)
-    
-    def menu_resolucao_lote(self, conflitos_pagina, total_restantes):
-        self.limpar_tela()
+    def batch_resolution_menu(self, conflicts_page, remaining):
+        self.clear_screen()
         cursor = 0
-        marcados = set()
+        marked = set()
 
-        def render_layout(pos, marc):
-            panel_info = Panel(f"[bold bright_blue]🔗 MODO DE RESOLUÇÃO EM LOTE[/bold bright_blue]\nFaltam [bold bright_yellow]{total_restantes}[/bold bright_yellow] notas pendentes. As resolvidas puxam as próximas da fila automaticamente.", border_style="bright_blue")
+        def render_layout(pos, sel_set):
+            t = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED, expand=True)
+            t.add_column("Sel")
+            t.add_column("Nota")
+            t.add_column("Contas")
+            t.add_column("Notas de Compra")
             
-            table = Table(show_header=True, header_style="bold bright_magenta", box=box.ROUNDED, show_lines=True)
-            table.add_column("Sel", justify="center", vertical="middle")
-            table.add_column("Nº Nota", style="bold bright_yellow", justify="center")
-            table.add_column("Contas a Pagar", style="white")
-            table.add_column("Notas de Compra", style="white")
-            table.add_column("Sugestão Automática", style="bold bright_green")
-            
-            for i, c in enumerate(conflitos_pagina):
-                is_selected = c['id_nota'] in marc
-                is_cursor = i == pos
+            for i, c in enumerate(conflicts_page):
+                is_cur = i == pos
+                is_sel = c['transaction_id'] in sel_set
+                prefix = "[cyan]>[/]" if is_cur else " "
+                sel = "[green][X][/]" if is_sel else "[dim][ ][/]"
+                style = "bold white" if is_cur else "white"
+                t.add_row(f"{prefix}{sel}", f"[{style}]{c['transaction_id']}[/]", f"[{style}]{c['bill']['val']}[/]", f"[{style}]{c['invoice']['val']}[/]")
                 
-                sel_char = "[bold bright_green][ X ][/]" if is_selected else "[dim][   ][/]"
-                cursor_char = "[bold bright_cyan]➜[/] " if is_cursor else "  "
-                row_style = "bold bright_white" if is_cursor else "white"
-                if is_selected and not is_cursor: row_style = "bright_green"
-                
-                st_c_format = f"{escape(c['conta']['val'] or 'VAZIO')} ({c['st_c']})"
-                st_n_format = f"{escape(c['nota']['val'] or 'VAZIO')} ({c['st_n']})"
-                sugestao = escape(c['sugestao_id']) if c['sugestao_id'] else "Manual"
-                
-                table.add_row(f"{cursor_char}{sel_char}", f"[{row_style}]{c['id_nota']}[/]", f"[{row_style}]{st_c_format}[/]", f"[{row_style}]{st_n_format}[/]", f"[{row_style}]{sugestao}[/]")
-                
-            qtd = len(marc)
-            alvo_txt = f"nas {qtd} notas marcadas" if qtd > 0 else "em TODAS da tela"
-            
-            atalhos = (
-                f"[bold bright_white]ATALHOS (Aplicará {alvo_txt}):[/bold bright_white]\n\n"
-                f" [bold bright_green][S][/bold bright_green] Aplicar a Sugestão Automática (onde houver)\n"
-                f" [bold bright_cyan][C][/bold bright_cyan] Forçar IDs usando o lado do [bold]Contas a Pagar[/bold]\n"
-                f" [bold bright_cyan][N][/bold bright_cyan] Forçar IDs usando o lado das [bold]Notas de Compra[/bold]\n"
-                f" [bold bright_magenta][I][/bold bright_magenta] Pesquisar e forçar um ID externo/manual para todas\n\n"
-                f" [bold red][Q][/bold red] Voltar para a Visão Macro"
-            )
-            
             return Group(
-                panel_info,
-                Text(" NAVEGAÇÃO: Setas (Cima/Baixo) | SELEÇÃO (Marcar): [ENTER]\n", style="dim"),
-                table,
-                Panel(atalhos, border_style="dim white")
+                Panel(f"RESOLUÇÃO EM LOTE - Restantes: {remaining}", border_style="blue"),
+                t, Align.center("[S] Sugestão | [C] Forçar Contas | [N] Forçar Notas | [I] Manual | [Q] Sair")
             )
 
-        with Live(render_layout(cursor, marcados), console=self.console, auto_refresh=False) as live:
+        with Live(render_layout(cursor, marked), console=self.console, auto_refresh=False) as live:
             while True:
-                if cursor >= len(conflitos_pagina):
-                    cursor = max(0, len(conflitos_pagina) - 1)
-                    live.update(render_layout(cursor, marcados), refresh=True)
-
-                tecla = msvcrt.getch()
-                if tecla in (b'\xe0', b'\x00'):
-                    seta = msvcrt.getch()
-                    if seta == b'H': cursor = max(0, cursor - 1)
-                    elif seta == b'P': cursor = min(len(conflitos_pagina) - 1, cursor + 1)
-                    live.update(render_layout(cursor, marcados), refresh=True)
-                elif tecla == b'\r':
-                    if conflitos_pagina:
-                        item_id = conflitos_pagina[cursor]['id_nota']
-                        if item_id in marcados: marcados.remove(item_id)
-                        else: marcados.add(item_id)
-                        live.update(render_layout(cursor, marcados), refresh=True)
-                elif tecla.upper() in [b'S', b'C', b'N', b'I', b'Q']:
-                    alvos = [c for c in conflitos_pagina if c['id_nota'] in marcados] if marcados else conflitos_pagina.copy()
-                    return tecla.upper().decode('utf-8'), alvos
-                elif tecla == b'\x03': raise KeyboardInterrupt
+                if cursor >= len(conflicts_page): cursor = max(0, len(conflicts_page) - 1)
+                live.update(render_layout(cursor, marked), refresh=True)
+                k = msvcrt.getch()
+                if k in (b'\xe0', b'\x00'):
+                    arr = msvcrt.getch()
+                    if arr == b'H': cursor = max(0, cursor - 1)
+                    elif arr == b'P': cursor = min(len(conflicts_page) - 1, cursor + 1)
+                elif k == b'\r':
+                    if conflicts_page:
+                        tid = conflicts_page[cursor]['transaction_id']
+                        marked.remove(tid) if tid in marked else marked.add(tid)
+                elif k.upper() in [b'S', b'C', b'N', b'I', b'Q']:
+                    targets = [c for c in conflicts_page if c['transaction_id'] in marked]
+                    return k.upper().decode('utf-8'), targets if targets else conflicts_page
+                elif k == b'\x03': raise KeyboardInterrupt
